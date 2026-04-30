@@ -111,6 +111,12 @@ func FormatSummary(result Result) string {
 			summary.Cleanup.Skipped,
 		))
 	}
+	if result.StartupCleanup != nil {
+		lines = append(lines, fmt.Sprintf("startup_cleanup attempted=%t ok=%t", result.StartupCleanup.Attempted, result.StartupCleanup.OK))
+	}
+	if result.Reconciliation != nil {
+		lines = append(lines, fmt.Sprintf("reconciliation attempted=%t ok=%t", result.Reconciliation.Attempted, result.Reconciliation.OK))
+	}
 	for _, sample := range result.Samples {
 		if sample.Error != "" {
 			lines = append(lines, "error="+sample.Error)

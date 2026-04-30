@@ -49,6 +49,7 @@ func WriteCSV(path string, samples []Sample) error {
 
 	if err := writer.Write([]string{
 		"venue",
+		"run_id",
 		"scenario",
 		"transport",
 		"index",
@@ -81,6 +82,7 @@ func WriteCSV(path string, samples []Sample) error {
 		cleanupAttempted, cleanupOK, cleanupStatusCode, cleanupDurationNS, cleanupError := cleanupCSVFields(sample.Cleanup)
 		if err := writer.Write([]string{
 			sample.Venue,
+			sample.RunID,
 			string(sample.Scenario),
 			sample.Transport,
 			strconv.Itoa(sample.Index),

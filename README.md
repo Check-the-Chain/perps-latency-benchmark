@@ -125,13 +125,14 @@ Fill-likely order profiles, including market, IOC, FOK, and explicit
 non-post-only orders, are blocked. Use post-only/maker-style orders while
 validating repeatability.
 
-Hyperliquid and Lighter support best-effort cleanup of benchmark orders by
-client order identifier. Cleanup is recorded in JSON samples and is not included
-in latency summaries. The summary prints cleanup attempted/ok/failed/skipped
-counts. Each run also gets a `run_id`, and Hyperliquid/Lighter client order IDs
-are derived from it. Pass `--run-id` when you want a human-readable or
-externally supplied run identifier. Use strict cleanup only when you want
-cleanup failures to fail the sample:
+Hyperliquid and Lighter support cleanup of benchmark orders by client order
+identifier. Cleanup runs outside the measured latency window. At startup, the
+runner checks for stale orders from the same `run_id`; after the run, it
+reconciles that no submitted benchmark orders remain open. Each run gets a
+`run_id`, and Hyperliquid/Lighter client order IDs are derived from it. Pass
+`--run-id` when you want a human-readable or externally supplied run
+identifier. Use strict cleanup when you want cleanup failures to fail the
+sample:
 
 ```bash
 --cleanup --cleanup-mode strict

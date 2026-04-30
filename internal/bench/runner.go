@@ -34,10 +34,48 @@ func (r Runner) Run(ctx context.Context) (Result, error) {
 		defer r.Cleanup.Close(ctx)
 	}
 
+	startup := r.beforeRun(ctx, cfg)
 	if cfg.RatePerSecond > 0 {
-		return r.runOpenLoop(ctx, cfg), nil
+		result := r.runOpenLoop(ctx, cfg)
+		result.StartupCleanup = startup
+		result.Reconciliation = r.afterRun(ctx, result)
+		return result, nil
 	}
-	return r.runClosedLoop(ctx, cfg), nil
+	result := r.runClosedLoop(ctx, cfg)
+	result.StartupCleanup = startup
+	result.Reconciliation = r.afterRun(ctx, result)
+	return result, nil
+}
+
+func (r Runner) beforeRun(ctx context.Context, cfg Config) *CleanupResult {
+	if r.Cleanup == nil || !cfg.Cleanup.Enabled {
+		return nil
+	}
+	hooks, ok := r.Cleanup.(RunCleanupAdapter)
+	if !ok {
+		return nil
+	}
+	cleanup := hooks.BeforeRun(ctx, CleanupRun{
+		Venue:      r.Venue.Name(),
+		RunID:      cfg.RunID,
+		Scenario:   cfg.Scenario,
+		Iterations: cfg.Iterations,
+		Warmups:    cfg.Warmups,
+		BatchSize:  cfg.BatchSize,
+	})
+	return &cleanup
+}
+
+func (r Runner) afterRun(ctx context.Context, result Result) *CleanupResult {
+	if r.Cleanup == nil || !r.Config.Cleanup.Enabled {
+		return nil
+	}
+	hooks, ok := r.Cleanup.(RunCleanupAdapter)
+	if !ok {
+		return nil
+	}
+	cleanup := hooks.AfterRun(ctx, result)
+	return &cleanup
 }
 
 func (r Runner) runClosedLoop(ctx context.Context, cfg Config) Result {

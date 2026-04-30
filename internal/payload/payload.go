@@ -21,21 +21,22 @@ type Request struct {
 }
 
 type Built struct {
-	Method            string            `json:"method,omitempty"`
-	URL               string            `json:"url,omitempty"`
-	BatchURL          string            `json:"batch_url,omitempty"`
-	WSURL             string            `json:"ws_url,omitempty"`
-	WSBatchURL        string            `json:"ws_batch_url,omitempty"`
-	Headers           map[string]string `json:"headers,omitempty"`
-	Body              *string           `json:"body,omitempty"`
-	BodyBase64        string            `json:"body_base64,omitempty"`
-	BatchBody         *string           `json:"batch_body,omitempty"`
-	BatchBodyBase64   string            `json:"batch_body_base64,omitempty"`
-	WSBody            *string           `json:"ws_body,omitempty"`
-	WSBodyBase64      string            `json:"ws_body_base64,omitempty"`
-	WSBatchBody       *string           `json:"ws_batch_body,omitempty"`
-	WSBatchBodyBase64 string            `json:"ws_batch_body_base64,omitempty"`
-	Metadata          map[string]any    `json:"metadata,omitempty"`
+	Method            string               `json:"method,omitempty"`
+	URL               string               `json:"url,omitempty"`
+	BatchURL          string               `json:"batch_url,omitempty"`
+	WSURL             string               `json:"ws_url,omitempty"`
+	WSBatchURL        string               `json:"ws_batch_url,omitempty"`
+	Headers           map[string]string    `json:"headers,omitempty"`
+	Body              *string              `json:"body,omitempty"`
+	BodyBase64        string               `json:"body_base64,omitempty"`
+	BatchBody         *string              `json:"batch_body,omitempty"`
+	BatchBodyBase64   string               `json:"batch_body_base64,omitempty"`
+	WSBody            *string              `json:"ws_body,omitempty"`
+	WSBodyBase64      string               `json:"ws_body_base64,omitempty"`
+	WSBatchBody       *string              `json:"ws_batch_body,omitempty"`
+	WSBatchBodyBase64 string               `json:"ws_batch_body_base64,omitempty"`
+	Metadata          map[string]any       `json:"metadata,omitempty"`
+	Cleanup           *bench.CleanupResult `json:"cleanup,omitempty"`
 }
 
 type Builder interface {

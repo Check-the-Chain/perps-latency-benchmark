@@ -10,6 +10,8 @@ import sys
 from typing import Any
 from urllib.parse import urlencode
 
+from build_payload import order_index
+
 
 def main() -> int:
     try:
@@ -31,12 +33,7 @@ async def serve(lighter: Any) -> None:
 
 async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
     params = dict(req.get("params") or {})
-    metadata = dict(params.get("metadata") or {})
     builder_params = dict(params.get("builder_params") or {})
-    orders = [order for order in metadata.get("cleanup_orders") or [] if order.get("venue") == "lighter"]
-    if not orders:
-        return {"metadata": {"cleanup": "skipped", "reason": "no lighter cleanup_orders"}}
-
     api_key_index = int(env_or_param(builder_params, "api_key_index", "LIGHTER_API_KEY_INDEX"))
     account_index = int(env_or_param(builder_params, "account_index", "LIGHTER_ACCOUNT_INDEX"))
     private_key = env_or_param(builder_params, "private_key", "LIGHTER_PRIVATE_KEY")
@@ -47,6 +44,21 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         account_index=account_index,
     )
     try:
+        phase = params.get("phase", "after_sample")
+        if phase == "before_run":
+            orders = await open_cleanup_orders(client, planned_orders(params, builder_params), builder_params, api_key_index, account_index)
+            if not orders:
+                return cleanup_result(False, True, "no stale lighter benchmark orders")
+        elif phase == "after_run":
+            remaining = await open_cleanup_orders(client, result_orders(dict(params.get("result") or {})), builder_params, api_key_index, account_index)
+            if remaining:
+                return cleanup_result(True, False, f"{len(remaining)} lighter benchmark orders still open")
+            return cleanup_result(True, True, "no lighter benchmark orders open after run")
+        else:
+            orders = cleanup_orders(dict(params.get("metadata") or {}))
+            if not orders:
+                return cleanup_result(False, True, "no lighter cleanup_orders")
+
         tx_types, tx_infos = [], []
         for offset, order in enumerate(orders):
             cancel_api_key_index, nonce = cleanup_nonce(client, builder_params, api_key_index, offset)
@@ -69,6 +81,85 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         "body": urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}),
         "metadata": {"cleanup": "cancel_order", "orders": len(tx_types)},
     }
+
+
+def planned_orders(params: dict[str, Any], builder_params: dict[str, Any]) -> list[dict[str, Any]]:
+    run = dict(params.get("run") or {})
+    run_id = run.get("run_id")
+    if not run_id:
+        return []
+    scenario = run.get("scenario", "single")
+    total = int(run.get("iterations") or 0) + int(run.get("warmups") or 0)
+    warmups = int(run.get("warmups") or 0)
+    batch_size = int(run.get("batch_size") or 1)
+    count = batch_size if scenario == "batch" else 1
+    order_params = dict(builder_params)
+    order_params["run_id"] = run_id
+    refs = []
+    for index in range(total):
+        req = {"iteration": index - warmups}
+        for offset in range(count):
+            refs.append({
+                "venue": "lighter",
+                "market_index": int(order_params["market_index"]),
+                "order_index": order_index(req, order_params, offset),
+            })
+    return refs
+
+
+def result_orders(result: dict[str, Any]) -> list[dict[str, Any]]:
+    refs = []
+    for sample in result.get("samples") or []:
+        refs.extend(cleanup_orders(dict(sample.get("metadata") or {})))
+    return refs
+
+
+def cleanup_orders(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    return [order for order in metadata.get("cleanup_orders") or [] if order.get("venue") == "lighter"]
+
+
+async def open_cleanup_orders(client: Any, refs: list[dict[str, Any]], params: dict[str, Any], api_key_index: int, account_index: int) -> list[dict[str, Any]]:
+    if not refs:
+        return []
+    auth, error = client.create_auth_token_with_expiry(api_key_index=api_key_index)
+    if error:
+        raise SystemExit(f"Lighter auth token failed: {error}")
+    open_by_market: dict[int, set[int]] = {}
+    for market_index in sorted({int(ref["market_index"]) for ref in refs}):
+        response = await client.order_api.account_active_orders(account_index=account_index, market_id=market_index, auth=auth)
+        open_by_market[market_index] = {order_index_value(order) for order in orders_list(response)}
+    return [ref for ref in refs if int(ref["order_index"]) in open_by_market.get(int(ref["market_index"]), set())]
+
+
+def orders_list(response: Any) -> list[Any]:
+    if hasattr(response, "orders"):
+        return response.orders or []
+    if isinstance(response, dict):
+        return response.get("orders") or []
+    return []
+
+
+def order_index_value(order: Any) -> int:
+    if hasattr(order, "client_order_index"):
+        return int(order.client_order_index)
+    if hasattr(order, "client_order_id"):
+        return int(order.client_order_id)
+    if hasattr(order, "order_index"):
+        return int(order.order_index)
+    if hasattr(order, "orderIndex"):
+        return int(order.orderIndex)
+    if isinstance(order, dict):
+        for key in ("client_order_index", "client_order_id", "order_index", "orderIndex", "index"):
+            if key in order:
+                return int(order[key])
+    return -1
+
+
+def cleanup_result(attempted: bool, ok: bool, description: str) -> dict[str, Any]:
+    result = {"attempted": attempted, "ok": ok, "description": description}
+    if not ok:
+        result["error"] = description
+    return {"cleanup": result}
 
 
 def sign_cancel(client: Any, order: dict[str, Any], api_key_index: int, nonce: int) -> tuple[int, str]:

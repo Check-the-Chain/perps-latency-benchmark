@@ -75,6 +75,20 @@ type CleanupAdapter interface {
 	Close(ctx context.Context) error
 }
 
+type RunCleanupAdapter interface {
+	BeforeRun(ctx context.Context, run CleanupRun) CleanupResult
+	AfterRun(ctx context.Context, result Result) CleanupResult
+}
+
+type CleanupRun struct {
+	Venue      string   `json:"venue"`
+	RunID      string   `json:"run_id"`
+	Scenario   Scenario `json:"scenario"`
+	Iterations int      `json:"iterations"`
+	Warmups    int      `json:"warmups"`
+	BatchSize  int      `json:"batch_size"`
+}
+
 type CleanupResult struct {
 	Attempted   bool   `json:"attempted"`
 	OK          bool   `json:"ok"`
@@ -112,11 +126,13 @@ type Sample struct {
 }
 
 type Result struct {
-	Venue       string      `json:"venue"`
-	RunID       string      `json:"run_id,omitempty"`
-	Scenario    Scenario    `json:"scenario"`
-	LatencyMode LatencyMode `json:"latency_mode"`
-	Samples     []Sample    `json:"samples"`
+	Venue          string         `json:"venue"`
+	RunID          string         `json:"run_id,omitempty"`
+	Scenario       Scenario       `json:"scenario"`
+	LatencyMode    LatencyMode    `json:"latency_mode"`
+	StartupCleanup *CleanupResult `json:"startup_cleanup,omitempty"`
+	Reconciliation *CleanupResult `json:"reconciliation,omitempty"`
+	Samples        []Sample       `json:"samples"`
 }
 
 type ComparisonResult struct {

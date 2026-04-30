@@ -9,12 +9,16 @@ import sys
 import time
 from typing import Any
 
+from build_payload import cleanup_ref, order_cloid
+
 
 def main() -> int:
     try:
         from eth_account import Account
         from hyperliquid.utils.constants import MAINNET_API_URL
+        from hyperliquid.info import Info
         from hyperliquid.utils.signing import sign_l1_action
+        from hyperliquid.utils.types import Cloid
     except ImportError as exc:
         raise SystemExit(
             "missing Hyperliquid SDK dependencies; run with "
@@ -24,19 +28,43 @@ def main() -> int:
     for line in sys.stdin:
         if not line.strip():
             continue
-        built = build(json.loads(line), Account, MAINNET_API_URL, sign_l1_action)
+        built = build(json.loads(line), Account, Info, MAINNET_API_URL, sign_l1_action, Cloid)
         print(compact_json(built), flush=True)
     return 0
 
 
-def build(req: dict[str, Any], Account: Any, MAINNET_API_URL: str, sign_l1_action: Any) -> dict[str, Any]:
+def build(req: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str, sign_l1_action: Any, Cloid: Any) -> dict[str, Any]:
     params = dict(req.get("params") or {})
-    metadata = dict(params.get("metadata") or {})
     builder_params = dict(params.get("builder_params") or {})
-    orders = [order for order in metadata.get("cleanup_orders") or [] if order.get("venue") == "hyperliquid"]
-    if not orders:
-        return {"metadata": {"cleanup": "skipped", "reason": "no hyperliquid cleanup_orders"}}
+    phase = params.get("phase", "after_sample")
+    if phase == "before_run":
+        return before_run(params, builder_params, Account, Info, MAINNET_API_URL, sign_l1_action, Cloid)
+    if phase == "after_run":
+        return after_run(params, builder_params, Account, Info, MAINNET_API_URL)
 
+    orders = cleanup_orders(dict(params.get("metadata") or {}))
+    if not orders:
+        return skipped("no hyperliquid cleanup_orders")
+    return cancel_payload(orders, builder_params, Account, MAINNET_API_URL, sign_l1_action)
+
+
+def before_run(params: dict[str, Any], builder_params: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str, sign_l1_action: Any, Cloid: Any) -> dict[str, Any]:
+    planned = planned_orders(params, builder_params, Cloid)
+    open_orders = open_cleanup_orders(planned, builder_params, Account, Info, MAINNET_API_URL)
+    if not open_orders:
+        return cleanup_result(False, True, "no stale hyperliquid benchmark orders")
+    return cancel_payload(open_orders, builder_params, Account, MAINNET_API_URL, sign_l1_action)
+
+
+def after_run(params: dict[str, Any], builder_params: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str) -> dict[str, Any]:
+    refs = result_orders(dict(params.get("result") or {}))
+    remaining = open_cleanup_orders(refs, builder_params, Account, Info, MAINNET_API_URL)
+    if remaining:
+        return cleanup_result(True, False, f"{len(remaining)} hyperliquid benchmark orders still open")
+    return cleanup_result(True, True, "no hyperliquid benchmark orders open after run")
+
+
+def cancel_payload(orders: list[dict[str, Any]], builder_params: dict[str, Any], Account: Any, MAINNET_API_URL: str, sign_l1_action: Any) -> dict[str, Any]:
     wallet = Account.from_key(env_or_param(builder_params, "secret_key", "HYPERLIQUID_SECRET_KEY"))
     action = {
         "type": "cancelByCloid",
@@ -63,6 +91,62 @@ def build(req: dict[str, Any], Account: Any, MAINNET_API_URL: str, sign_l1_actio
         "body": compact_json(payload),
         "metadata": {"cleanup": "cancelByCloid", "orders": len(orders), "nonce": nonce},
     }
+
+
+def planned_orders(params: dict[str, Any], builder_params: dict[str, Any], Cloid: Any) -> list[dict[str, Any]]:
+    run = dict(params.get("run") or {})
+    run_id = run.get("run_id")
+    if not run_id:
+        return []
+    scenario = run.get("scenario", "single")
+    total = int(run.get("iterations") or 0) + int(run.get("warmups") or 0)
+    warmups = int(run.get("warmups") or 0)
+    batch_size = int(run.get("batch_size") or 1)
+    count = batch_size if scenario == "batch" else 1
+    refs = []
+    order_params = dict(builder_params)
+    order_params["run_id"] = run_id
+    for index in range(total):
+        req = {"iteration": index - warmups}
+        for offset in range(count):
+            order = {
+                "asset": int(order_params["asset"]),
+                "coin": order_params.get("symbol", "BTC"),
+                "cloid": order_cloid(order_params, req, offset, Cloid),
+            }
+            refs.append(cleanup_ref(order))
+    return refs
+
+
+def result_orders(result: dict[str, Any]) -> list[dict[str, Any]]:
+    refs = []
+    for sample in result.get("samples") or []:
+        refs.extend(cleanup_orders(dict(sample.get("metadata") or {})))
+    return refs
+
+
+def cleanup_orders(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    return [order for order in metadata.get("cleanup_orders") or [] if order.get("venue") == "hyperliquid"]
+
+
+def open_cleanup_orders(refs: list[dict[str, Any]], builder_params: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str) -> list[dict[str, Any]]:
+    if not refs:
+        return []
+    wallet = Account.from_key(env_or_param(builder_params, "secret_key", "HYPERLIQUID_SECRET_KEY"))
+    info = Info(builder_params.get("base_url", MAINNET_API_URL), skip_ws=True)
+    open_cloids = {str(order.get("cloid")) for order in info.open_orders(wallet.address) if order.get("cloid")}
+    return [ref for ref in refs if str(ref.get("cloid")) in open_cloids]
+
+
+def cleanup_result(attempted: bool, ok: bool, description: str) -> dict[str, Any]:
+    result = {"attempted": attempted, "ok": ok, "description": description}
+    if not ok:
+        result["error"] = description
+    return {"cleanup": result}
+
+
+def skipped(reason: str) -> dict[str, Any]:
+    return cleanup_result(False, True, reason)
 
 
 def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:

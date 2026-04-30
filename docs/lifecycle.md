@@ -18,10 +18,11 @@ reconciliation before they should be benchmarked repeatedly.
 Hyperliquid and Lighter have cleanup adapters for:
 
 - cancel by client order ID
+- startup stale-order cleanup for the same `run_id`
+- after-run open-order reconciliation for submitted benchmark refs
 
 The next lifecycle layer should add concrete venue adapters for:
 
-- list open benchmark orders by run ID/client ID prefix
 - get current position
 - neutralize unexpected or intentional fills
 

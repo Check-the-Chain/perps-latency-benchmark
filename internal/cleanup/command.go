@@ -81,11 +81,12 @@ func (a *CommandAdapter) AfterSample(ctx context.Context, sample bench.Sample) b
 	}
 
 	params := map[string]any{
+		"phase":          "after_sample",
 		"sample":         sample,
 		"metadata":       sample.Metadata,
 		"builder_params": a.cfg.StaticParams,
 	}
-	built, err := a.builder.Build(ctx, payload.Request{
+	return a.run(ctx, start, payload.Request{
 		Venue:     sample.Venue,
 		Transport: sample.Transport,
 		Scenario:  sample.Scenario,
@@ -93,8 +94,44 @@ func (a *CommandAdapter) AfterSample(ctx context.Context, sample bench.Sample) b
 		BatchSize: sample.BatchSize,
 		Params:    params,
 	})
+}
+
+func (a *CommandAdapter) BeforeRun(ctx context.Context, run bench.CleanupRun) bench.CleanupResult {
+	start := time.Now()
+	return a.run(ctx, start, payload.Request{
+		Venue:     run.Venue,
+		Scenario:  run.Scenario,
+		BatchSize: run.BatchSize,
+		Params: map[string]any{
+			"phase":          "before_run",
+			"run":            run,
+			"builder_params": a.cfg.StaticParams,
+		},
+	})
+}
+
+func (a *CommandAdapter) AfterRun(ctx context.Context, result bench.Result) bench.CleanupResult {
+	start := time.Now()
+	return a.run(ctx, start, payload.Request{
+		Venue:     result.Venue,
+		Scenario:  result.Scenario,
+		BatchSize: 1,
+		Params: map[string]any{
+			"phase":          "after_run",
+			"result":         result,
+			"builder_params": a.cfg.StaticParams,
+		},
+	})
+}
+
+func (a *CommandAdapter) run(ctx context.Context, start time.Time, req payload.Request) bench.CleanupResult {
+	built, err := a.builder.Build(ctx, req)
 	if err != nil {
 		return cleanupError(start, err)
+	}
+	if built.Cleanup != nil {
+		built.Cleanup.DurationNS = time.Since(start).Nanoseconds()
+		return *built.Cleanup
 	}
 
 	body, err := payload.Bytes(built.Body, built.BodyBase64, nil)

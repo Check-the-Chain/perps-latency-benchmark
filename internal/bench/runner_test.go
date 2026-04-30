@@ -122,6 +122,28 @@ func TestRunnerStrictCleanupFailureFailsSample(t *testing.T) {
 	}
 }
 
+func TestRunnerRecordsRunCleanupHooks(t *testing.T) {
+	result, err := bench.Runner{
+		Config: bench.Config{
+			Scenario:   bench.ScenarioSingle,
+			Iterations: 1,
+			Cleanup:    bench.CleanupConfig{Enabled: true, Mode: bench.CleanupModeBestEffort, Scope: bench.CleanupScopeAfterSample},
+		},
+		Client:  NewTestClient(),
+		Venue:   mock.New(mock.Config{}),
+		Cleanup: &fakeRunCleanup{},
+	}.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.StartupCleanup == nil || !result.StartupCleanup.OK {
+		t.Fatalf("startup cleanup = %#v", result.StartupCleanup)
+	}
+	if result.Reconciliation == nil || !result.Reconciliation.OK {
+		t.Fatalf("reconciliation = %#v", result.Reconciliation)
+	}
+}
+
 func TestRunnerOpenLoopStopsSchedulingWhenContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -156,6 +178,18 @@ func (c *fakeCleanup) AfterSample(context.Context, bench.Sample) bench.CleanupRe
 
 func (c *fakeCleanup) Close(context.Context) error {
 	return nil
+}
+
+type fakeRunCleanup struct {
+	fakeCleanup
+}
+
+func (c *fakeRunCleanup) BeforeRun(context.Context, bench.CleanupRun) bench.CleanupResult {
+	return bench.CleanupResult{Attempted: false, OK: true, Description: "startup"}
+}
+
+func (c *fakeRunCleanup) AfterRun(context.Context, bench.Result) bench.CleanupResult {
+	return bench.CleanupResult{Attempted: true, OK: true, Description: "reconcile"}
 }
 
 type classifierVenue struct {
