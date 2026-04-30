@@ -30,13 +30,13 @@ go run ./cmd/perps-bench accounts checklist \
 Complete the venue-side setup:
 
 - Hyperliquid: register or approve the printed EVM wallet if needed, fund the
-  Hyperliquid account or agent wallet, then confirm `symbol`, `asset`, `size`,
-  and `price` in `examples/hyperliquid-builder.json`.
+  Hyperliquid account or agent wallet, then adjust the BTC order params in
+  `examples/hyperliquid-builder.json` if needed.
 - Lighter: use the printed Ethereum address for account creation/deposits,
   generate an API key in Lighter, fill `LIGHTER_PRIVATE_KEY`,
   `LIGHTER_ACCOUNT_INDEX`, and `LIGHTER_API_KEY_INDEX` in `.env.wallets.local`,
-  then confirm `market_index`, `base_amount`, and `price` in
-  `examples/lighter-builder.json`.
+  then adjust the BTC order params in `examples/lighter-builder.json` if
+  needed.
 
 Verify that required local environment is present:
 
@@ -64,8 +64,8 @@ go run ./cmd/perps-bench run \
   --confirm-live
 ```
 
-The starter configs use small post-only orders. Keep them small until account
-setup is confirmed.
+The starter configs use small post-only BTC orders. Keep them small until
+account setup is confirmed.
 
 ## Account Commands
 

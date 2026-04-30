@@ -257,13 +257,13 @@ func TestRunRejectsMissingVenueBuilderParam(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(config, []byte(`{
-  "venue": "lighter",
+  "venue": "edgex",
   "benchmark": {"iterations": 1},
   "request": {
     "builder": {
       "type": "command",
       "command": ["echo", "{}"],
-      "params": {"market_index": 1, "price": 100}
+      "params": {"price": "75000", "size": "0.001"}
     }
   }
 }`), 0o644); err != nil {
@@ -276,8 +276,25 @@ func TestRunRejectsMissingVenueBuilderParam(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing builder param error")
 	}
-	if !strings.Contains(err.Error(), "params.base_amount") {
+	if !strings.Contains(err.Error(), "params.metadata") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateRunConfigUsesVenueBuilderDefaults(t *testing.T) {
+	cfg := fileConfig{
+		Venue:     "lighter",
+		Benchmark: benchmarkConfig{Iterations: 1},
+		Request: requestConfig{
+			Builder: builderConfig{
+				Type:    "command",
+				Command: []string{"echo", "{}"},
+			},
+		},
+	}
+
+	if err := validateRunConfig("lighter", cfg); err != nil {
+		t.Fatalf("validateRunConfig = %v", err)
 	}
 }
 
@@ -447,7 +464,7 @@ func TestRunBuilderVenueChecksAccountsBeforeBenchmark(t *testing.T) {
     "builder": {
       "type": "command",
       "command": ["echo", "{}"],
-      "params": {"asset": 4, "size": "0.001", "price": "3000"}
+      "params": {"asset": 0, "size": "0.001", "price": "75000"}
     }
   }
 }`), 0o644); err != nil {

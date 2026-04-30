@@ -3,6 +3,7 @@ package spec
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 
@@ -22,6 +23,7 @@ type Capabilities struct {
 
 type BuilderParams struct {
 	Required []string
+	Defaults map[string]any
 }
 
 type Definition struct {
@@ -54,6 +56,7 @@ func (d Definition) Build(cfg Config) (bench.Venue, error) {
 
 	req := cfg.Request
 	req.Name = d.Name
+	req.BuilderParams = d.BuilderParams.Merge(req.BuilderParams)
 	if req.URL == "" {
 		req.URL = d.httpURL(cfg.BaseURL)
 	}
@@ -69,6 +72,17 @@ func (d Definition) Build(cfg Config) (bench.Venue, error) {
 	req.Classifier = d.Classifier
 
 	return prebuilt.New(req)
+}
+
+func (p BuilderParams) Merge(params map[string]any) map[string]any {
+	if len(p.Defaults) == 0 {
+		return params
+	}
+	merged := maps.Clone(p.Defaults)
+	for key, value := range params {
+		merged[key] = value
+	}
+	return merged
 }
 
 func (d Definition) Names() []string {

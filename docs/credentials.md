@@ -106,6 +106,10 @@ Use Lighter to generate the trading API key, then copy the active key material
 and indexes into `LIGHTER_PRIVATE_KEY`, `LIGHTER_ACCOUNT_INDEX`, and
 `LIGHTER_API_KEY_INDEX`.
 
+The starter builders default to small post-only BTC orders. Lighter uses scaled
+integer order units: the current BTC default is `market_index=1`,
+`base_amount=100` and `price=750000`, representing 0.001 BTC at 75,000.0.
+
 GRVT:
 
 ```bash

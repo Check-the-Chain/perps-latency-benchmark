@@ -19,8 +19,20 @@ func Definition() spec.Definition {
 		Capabilities: spec.Capabilities{
 			HTTPSingle: true,
 		},
-		BuilderParams: spec.BuilderParams{Required: []string{"size", "price"}},
-		Classifier:    classify,
+		BuilderParams: spec.BuilderParams{
+			Required: []string{"size", "price"},
+			Defaults: map[string]any{
+				"env":           "mainnet",
+				"market":        "BTC-USD",
+				"side":          "buy",
+				"size":          "0.001",
+				"price":         "75000",
+				"time_in_force": "GTT",
+				"post_only":     true,
+				"fee":           "0.0002",
+			},
+		},
+		Classifier: classify,
 		Docs: []string{
 			"https://api.docs.extended.exchange/",
 		},

@@ -35,7 +35,7 @@
       "timeout_ms": 5000,
       "params": {
         "contract_id": "10000001",
-        "price": "50000",
+        "price": "75000",
         "size": "0.001",
         "side": "BUY",
         "type": "LIMIT",

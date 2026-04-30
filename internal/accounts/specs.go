@@ -78,7 +78,7 @@ var venueSpecs = []VenueSpec{
 		ManualSteps: []string{
 			"Lighter account creation and deposits require an Ethereum wallet; use LIGHTER_L1_ADDRESS for registration/funding.",
 			"Generate an API key in Lighter, then set LIGHTER_PRIVATE_KEY, LIGHTER_ACCOUNT_INDEX, and LIGHTER_API_KEY_INDEX.",
-			"Confirm market_index and scaled price/size values before live runs.",
+			"Default builder params target BTC; adjust market_index and scaled price/size values if you change markets.",
 		},
 	},
 	{

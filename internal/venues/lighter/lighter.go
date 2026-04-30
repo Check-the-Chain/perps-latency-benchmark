@@ -30,8 +30,18 @@ func Definition() spec.Definition {
 			WebSocketSingle: true,
 			WebSocketBatch:  true,
 		},
-		BuilderParams: spec.BuilderParams{Required: []string{"market_index", "base_amount", "price"}},
-		Classifier:    classify,
+		BuilderParams: spec.BuilderParams{
+			Required: []string{"market_index", "base_amount", "price"},
+			Defaults: map[string]any{
+				"symbol":       "BTC",
+				"market_index": 1,
+				"base_amount":  100,
+				"price":        750000,
+				"side":         "buy",
+				"post_only":    true,
+			},
+		},
+		Classifier: classify,
 		Docs: []string{
 			"https://apidocs.lighter.xyz/docs/get-started",
 			"https://apidocs.lighter.xyz/reference/sendtx",

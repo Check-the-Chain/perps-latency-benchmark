@@ -250,8 +250,9 @@ func validateRunConfig(venueName string, cfg fileConfig) error {
 		return err
 	}
 	if request.Builder.Type != "" {
+		params := definition.BuilderParams.Merge(request.Builder.Params)
 		for _, key := range definition.BuilderParams.Required {
-			if missingParam(request.Builder.Params, key) {
+			if missingParam(params, key) {
 				return fmt.Errorf("%s builder missing required params.%s", definition.Name, key)
 			}
 		}
@@ -304,11 +305,13 @@ func validateLifecycleForRun(venueName string, cfg fileConfig) error {
 		return nil
 	}
 	request := cfg.Request
+	params := request.Builder.Params
 	if definition, ok := registry.Lookup(venueName); ok {
 		venueCfg := cfgForVenue(definition.Name, cfg)
 		request = mergeRequest(cfg.Request, venueCfg.Request)
+		params = definition.BuilderParams.Merge(request.Builder.Params)
 	}
-	profile := lifecycle.ProfileFromParams(request.Builder.Params)
+	profile := lifecycle.ProfileFromParams(params)
 	if err := lifecycle.ValidateRisk(cfg.Risk, profile); err != nil {
 		return fmt.Errorf("risk validation failed: %w", err)
 	}

@@ -110,7 +110,7 @@ def order_from_params(params: dict[str, Any], offset: int) -> dict[str, Any]:
     if cloid and offset:
         cloid = f"{cloid}{offset}"
     order: dict[str, Any] = {
-        "coin": params.get("symbol", "ETH"),
+        "coin": params.get("symbol", "BTC"),
         "is_buy": str(params.get("side", "buy")).lower() == "buy",
         "sz": float(params["size"]),
         "limit_px": float(params["price"]),

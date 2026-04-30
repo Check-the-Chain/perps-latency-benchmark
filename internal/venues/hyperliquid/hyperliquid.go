@@ -30,8 +30,18 @@ func Definition() spec.Definition {
 			WebSocketSingle: true,
 			WebSocketBatch:  true,
 		},
-		BuilderParams: spec.BuilderParams{Required: []string{"asset", "size", "price"}},
-		Classifier:    classify,
+		BuilderParams: spec.BuilderParams{
+			Required: []string{"asset", "size", "price"},
+			Defaults: map[string]any{
+				"symbol": "BTC",
+				"asset":  0,
+				"side":   "buy",
+				"size":   "0.001",
+				"price":  "75000",
+				"tif":    "Alo",
+			},
+		},
+		Classifier: classify,
 		Docs: []string{
 			ExchangeEndpointDocsURL,
 			WebSocketDocsURL,

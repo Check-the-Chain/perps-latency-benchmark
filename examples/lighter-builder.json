@@ -32,9 +32,10 @@
       ],
       "timeout_ms": 5000,
       "params": {
-        "market_index": 0,
-        "base_amount": 10,
-        "price": 300000,
+        "symbol": "BTC",
+        "market_index": 1,
+        "base_amount": 100,
+        "price": 750000,
         "side": "buy",
         "post_only": true
       }

@@ -24,8 +24,18 @@ func Definition() spec.Definition {
 		Capabilities: spec.Capabilities{
 			HTTPSingle: true,
 		},
-		BuilderParams: spec.BuilderParams{Required: []string{"contract_id", "price", "size", "metadata"}},
-		Classifier:    classify,
+		BuilderParams: spec.BuilderParams{
+			Required: []string{"contract_id", "price", "size", "metadata"},
+			Defaults: map[string]any{
+				"contract_id":   "10000001",
+				"price":         "75000",
+				"size":          "0.001",
+				"side":          "BUY",
+				"type":          "LIMIT",
+				"time_in_force": "POST_ONLY",
+			},
+		},
+		Classifier: classify,
 		Docs: []string{
 			"https://edgex-1.gitbook.io/edgeX-documentation/api/authentication",
 			"https://edgex-1.gitbook.io/edgeX-documentation/api/sign",

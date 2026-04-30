@@ -37,7 +37,7 @@
         "env": "prod",
         "instrument": "BTC_USDT_Perp",
         "size": "0.001",
-        "price": "50000",
+        "price": "75000",
         "side": "buy",
         "post_only": true,
         "instruments": {

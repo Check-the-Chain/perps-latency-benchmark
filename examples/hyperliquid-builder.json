@@ -34,11 +34,11 @@
       ],
       "timeout_ms": 5000,
       "params": {
-        "symbol": "ETH",
-        "asset": 4,
+        "symbol": "BTC",
+        "asset": 0,
         "side": "buy",
         "size": "0.001",
-        "price": "3000",
+        "price": "75000",
         "tif": "Alo"
       }
     }

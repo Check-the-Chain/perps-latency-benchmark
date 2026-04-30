@@ -25,8 +25,18 @@ func Definition() spec.Definition {
 			WebSocketSingle: true,
 			WebSocketBatch:  true,
 		},
-		BuilderParams: spec.BuilderParams{Required: []string{"instrument", "size", "price", "instruments"}},
-		Classifier:    classify,
+		BuilderParams: spec.BuilderParams{
+			Required: []string{"instrument", "size", "price", "instruments"},
+			Defaults: map[string]any{
+				"env":        "prod",
+				"instrument": "BTC_USDT_Perp",
+				"size":       "0.001",
+				"price":      "75000",
+				"side":       "buy",
+				"post_only":  true,
+			},
+		},
+		Classifier: classify,
 		Docs: []string{
 			"https://api-docs.grvt.io/",
 			"https://api-docs.grvt.io/trading_api/",

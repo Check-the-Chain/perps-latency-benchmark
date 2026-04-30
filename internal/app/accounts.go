@@ -310,7 +310,7 @@ func printVenueChecklist(w io.Writer, spec accounts.VenueSpec, env map[string]st
 		fmt.Fprintln(w, "   - Register or approve this wallet for Hyperliquid trading if needed.")
 		fmt.Fprintln(w, "   - Fund the Hyperliquid account or agent wallet with enough collateral for the configured market.")
 		fmt.Fprintln(w, "   - Keep the example order post-only while validating repeatability.")
-		fmt.Fprintln(w, "   - Update examples/hyperliquid-builder.json: symbol, asset, size, price.")
+		fmt.Fprintln(w, "   - Adjust examples/hyperliquid-builder.json if you want to change the default BTC order params.")
 		fmt.Fprintln(w, "   - Run with: go run ./cmd/perps-bench run --config examples/hyperliquid-builder.json --env-file .env.wallets.local --confirm-live")
 	case "lighter":
 		l1Address := env["LIGHTER_L1_ADDRESS"]
@@ -321,7 +321,7 @@ func printVenueChecklist(w io.Writer, spec accounts.VenueSpec, env map[string]st
 		fmt.Fprintln(w, "   - Use the Ethereum wallet for Lighter account creation and deposits.")
 		fmt.Fprintln(w, "   - Generate an API key in Lighter, then fill LIGHTER_PRIVATE_KEY, LIGHTER_ACCOUNT_INDEX, and LIGHTER_API_KEY_INDEX in .env.wallets.local.")
 		fmt.Fprintln(w, "   - Fund the Lighter account with enough collateral for the configured market.")
-		fmt.Fprintln(w, "   - Update examples/lighter-builder.json: market_index, base_amount, price.")
+		fmt.Fprintln(w, "   - Adjust examples/lighter-builder.json if you want to change the default BTC order params.")
 		fmt.Fprintln(w, "   - Run with: go run ./cmd/perps-bench run --config examples/lighter-builder.json --env-file .env.wallets.local --confirm-live")
 	default:
 		for _, step := range spec.ManualSteps {
