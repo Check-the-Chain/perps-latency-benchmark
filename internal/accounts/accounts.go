@@ -3,7 +3,6 @@ package accounts
 import (
 	"cmp"
 	"crypto/ecdsa"
-	crand "crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -22,9 +21,8 @@ import (
 type WalletKind string
 
 const (
-	WalletEVM       WalletKind = "evm"
-	WalletStark     WalletKind = "stark"
-	WalletLighterL2 WalletKind = "lighter_l2"
+	WalletEVM   WalletKind = "evm"
+	WalletStark WalletKind = "stark"
 )
 
 type EnvVar struct {
@@ -184,6 +182,14 @@ func Generate(specs []VenueSpec, existing map[string]string) (map[string]string,
 			}
 			values[env.Name] = walletValue(wallet, env.Name)
 		}
+		for _, env := range spec.Env {
+			if env.Generated || !env.Required {
+				continue
+			}
+			if _, exists := values[env.Name]; !exists {
+				values[env.Name] = ""
+			}
+		}
 	}
 	return values, wallets, nil
 }
@@ -205,15 +211,6 @@ func GenerateWallet(kind WalletKind) (Wallet, error) {
 			Kind:       WalletStark,
 			PrivateKey: hexBig(privateKey),
 			PublicKey:  hexBig(publicX),
-		}, nil
-	case WalletLighterL2:
-		key := make([]byte, 40)
-		if _, err := crand.Read(key); err != nil {
-			return Wallet{}, err
-		}
-		return Wallet{
-			Kind:       WalletLighterL2,
-			PrivateKey: "0x" + hex.EncodeToString(key),
 		}, nil
 	default:
 		return Wallet{}, fmt.Errorf("unsupported wallet kind %q", kind)
@@ -245,11 +242,6 @@ func PublicFromEnv(kind WalletKind, env map[string]string) (Wallet, error) {
 		}
 		publicX, _ := curve.PrivateKeyToPoint(privateKey)
 		return Wallet{Kind: kind, PublicKey: hexBig(publicX)}, nil
-	case WalletLighterL2:
-		if env["LIGHTER_PRIVATE_KEY"] == "" {
-			return Wallet{Kind: kind}, nil
-		}
-		return Wallet{Kind: kind}, nil
 	default:
 		return Wallet{}, fmt.Errorf("unsupported wallet kind %q", kind)
 	}

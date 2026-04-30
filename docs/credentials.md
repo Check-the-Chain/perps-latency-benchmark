@@ -45,8 +45,8 @@ go run ./cmd/perps-bench accounts check --venues hyperliquid,lighter --env-file 
 Wallet generation deduplicates by wallet kind. For example, Hyperliquid and
 GRVT both use the generated EVM key, Lighter uses that same EVM key for
 account registration/deposits, while edgeX and Extended share the generated
-Stark key. Lighter also gets a separate L2 API key because its order API uses a
-different key format.
+Stark key. Lighter trading API key material is filled from Lighter after API key
+creation.
 
 `accounts generate` writes private material only to the local dotenv file and
 prints public identifiers only. It preserves existing variables in the output
@@ -102,10 +102,9 @@ and [API key docs](https://apidocs.lighter.xyz/docs/api-keys). `LIGHTER_L1_PRIVA
 `LIGHTER_ACCOUNT_INDEX`, and `LIGHTER_API_KEY_INDEX` are required by benchmark
 order builders.
 
-The generated `LIGHTER_PRIVATE_KEY` is not automatically active. Register it as
-a Lighter API key on the target account, or replace it with API key material
-created in Lighter. The account index and API key index must match that active
-key.
+Use Lighter to generate the trading API key, then copy the active key material
+and indexes into `LIGHTER_PRIVATE_KEY`, `LIGHTER_ACCOUNT_INDEX`, and
+`LIGHTER_API_KEY_INDEX`.
 
 GRVT:
 

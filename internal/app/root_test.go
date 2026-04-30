@@ -383,10 +383,15 @@ func TestAccountsGenerateAndPrintCommands(t *testing.T) {
 		"EXTENDED_PRIVATE_KEY=",
 		"EXTENDED_PUBLIC_KEY=",
 		"LIGHTER_PRIVATE_KEY=",
+		"LIGHTER_ACCOUNT_INDEX=",
+		"LIGHTER_API_KEY_INDEX=",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("generated env missing %s:\n%s", want, string(data))
 		}
+	}
+	if strings.Contains(string(data), "LIGHTER_PRIVATE_KEY=0x") {
+		t.Fatalf("generated env should not generate Lighter API key material:\n%s", string(data))
 	}
 
 	printCmd := NewRootCommand()
@@ -421,6 +426,7 @@ func TestAccountsChecklistCommand(t *testing.T) {
 		"examples/hyperliquid-builder.json",
 		"[lighter]",
 		"ethereum setup/funding wallet: 0x",
+		"LIGHTER_PRIVATE_KEY",
 		"LIGHTER_ACCOUNT_INDEX",
 		"examples/lighter-builder.json",
 		"accounts check --venues hyperliquid,lighter --env-file .env.wallets.local",

@@ -65,22 +65,19 @@ var venueSpecs = []VenueSpec{
 		},
 	},
 	{
-		Name: "lighter",
-		WalletKinds: []WalletKind{
-			WalletLighterL2,
-			WalletEVM,
-		},
-		Supported: true,
+		Name:        "lighter",
+		WalletKinds: []WalletKind{WalletEVM},
+		Supported:   true,
 		Env: []EnvVar{
 			{Name: "LIGHTER_L1_PRIVATE_KEY", Wallet: WalletEVM, Secret: true, Generated: true, Note: "Ethereum wallet private key for Lighter account registration/deposits. Not required for hot order submission after setup."},
 			{Name: "LIGHTER_L1_ADDRESS", Wallet: WalletEVM, Generated: true, Note: "Derived Ethereum address for Lighter account registration/deposits."},
-			{Name: "LIGHTER_PRIVATE_KEY", Secret: true, Generated: true, Required: true, Note: "Lighter API private key expected by lighter-sdk."},
+			{Name: "LIGHTER_PRIVATE_KEY", Secret: true, Required: true, Note: "Active Lighter API private key generated or registered in Lighter."},
 			{Name: "LIGHTER_ACCOUNT_INDEX", Required: true, Note: "Lighter account index."},
 			{Name: "LIGHTER_API_KEY_INDEX", Required: true, Note: "Lighter API key index."},
 		},
 		ManualSteps: []string{
 			"Lighter account creation and deposits require an Ethereum wallet; use LIGHTER_L1_ADDRESS for registration/funding.",
-			"Create or register the API key in Lighter and set the account/API key indexes.",
+			"Generate an API key in Lighter, then set LIGHTER_PRIVATE_KEY, LIGHTER_ACCOUNT_INDEX, and LIGHTER_API_KEY_INDEX.",
 			"Confirm market_index and scaled price/size values before live runs.",
 		},
 	},

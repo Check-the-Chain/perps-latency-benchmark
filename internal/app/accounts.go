@@ -120,12 +120,6 @@ func newAccountsCommand() *cobra.Command {
 					} else {
 						fmt.Fprintf(cmd.OutOrStdout(), "stark public key: %s\n", wallet.PublicKey)
 					}
-				case accounts.WalletLighterL2:
-					if env["LIGHTER_PRIVATE_KEY"] == "" {
-						fmt.Fprintln(cmd.OutOrStdout(), "lighter_l2: missing")
-					} else {
-						fmt.Fprintln(cmd.OutOrStdout(), "lighter_l2 key: present")
-					}
 				}
 			}
 			return nil
@@ -247,8 +241,6 @@ func printWalletSummary(w io.Writer, wallets map[accounts.WalletKind]accounts.Wa
 			fmt.Fprintf(w, "  evm address: %s\n", wallet.Address)
 		case accounts.WalletStark:
 			fmt.Fprintf(w, "  stark public key: %s\n", wallet.PublicKey)
-		case accounts.WalletLighterL2:
-			fmt.Fprintln(w, "  lighter_l2 key: generated")
 		}
 	}
 }
@@ -305,12 +297,6 @@ func printLoadedWalletIdentifiers(w io.Writer, specs []accounts.VenueSpec, env m
 			printValueOrMissing(w, "evm address", wallet.Address)
 		case accounts.WalletStark:
 			printValueOrMissing(w, "stark public key", wallet.PublicKey)
-		case accounts.WalletLighterL2:
-			if env["LIGHTER_PRIVATE_KEY"] == "" {
-				fmt.Fprintln(w, "   lighter_l2 key: missing")
-			} else {
-				fmt.Fprintln(w, "   lighter_l2 key: present")
-			}
 		}
 	}
 }
@@ -333,7 +319,7 @@ func printVenueChecklist(w io.Writer, spec accounts.VenueSpec, env map[string]st
 		}
 		printValueOrMissing(w, "ethereum setup/funding wallet", l1Address)
 		fmt.Fprintln(w, "   - Use the Ethereum wallet for Lighter account creation and deposits.")
-		fmt.Fprintln(w, "   - Create or register the Lighter API key, then fill LIGHTER_ACCOUNT_INDEX and LIGHTER_API_KEY_INDEX in .env.wallets.local.")
+		fmt.Fprintln(w, "   - Generate an API key in Lighter, then fill LIGHTER_PRIVATE_KEY, LIGHTER_ACCOUNT_INDEX, and LIGHTER_API_KEY_INDEX in .env.wallets.local.")
 		fmt.Fprintln(w, "   - Fund the Lighter account with enough collateral for the configured market.")
 		fmt.Fprintln(w, "   - Update examples/lighter-builder.json: market_index, base_amount, price.")
 		fmt.Fprintln(w, "   - Run with: go run ./cmd/perps-bench run --config examples/lighter-builder.json --env-file .env.wallets.local --confirm-live")

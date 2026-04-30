@@ -20,7 +20,7 @@ func TestGenerateDeduplicatesWalletKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(wallets) != 3 {
+	if len(wallets) != 2 {
 		t.Fatalf("wallets = %#v", wallets)
 	}
 	if values["HYPERLIQUID_SECRET_KEY"] == "" || values["GRVT_PRIVATE_KEY"] == "" {
@@ -38,14 +38,14 @@ func TestGenerateDeduplicatesWalletKinds(t *testing.T) {
 	if values["EXTENDED_PUBLIC_KEY"] == "" {
 		t.Fatalf("missing extended public key")
 	}
-	if values["LIGHTER_PRIVATE_KEY"] == "" {
-		t.Fatalf("missing lighter key")
-	}
 	if values["LIGHTER_L1_PRIVATE_KEY"] == "" || values["LIGHTER_L1_ADDRESS"] == "" {
 		t.Fatalf("missing lighter l1 wallet")
 	}
 	if values["LIGHTER_L1_PRIVATE_KEY"] != values["HYPERLIQUID_SECRET_KEY"] {
 		t.Fatalf("expected Lighter L1 wallet to reuse EVM key")
+	}
+	if value, ok := values["LIGHTER_PRIVATE_KEY"]; !ok || value != "" {
+		t.Fatalf("expected blank Lighter API key placeholder, got %q exists=%v", value, ok)
 	}
 }
 
