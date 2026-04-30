@@ -72,7 +72,7 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
             orders = cleanup_orders(dict(params.get("metadata") or {}))
             if not orders:
                 return cleanup_result(False, True, "no lighter cleanup_orders")
-            remaining = await open_cleanup_orders(client, orders, builder_params, api_key_index, account_index)
+            remaining = await wait_open_cleanup_orders(client, orders, builder_params, api_key_index, account_index)
             if not remaining:
                 neutralize = await neutralize_payload(client, params, builder_params, api_key_index, account_index)
                 if neutralize:
@@ -150,6 +150,17 @@ async def open_cleanup_orders(client: Any, refs: list[dict[str, Any]], params: d
         response = await client.order_api.account_active_orders(account_index=account_index, market_id=market_index, auth=auth)
         open_by_market[market_index] = {order_index_value(order) for order in orders_list(response)}
     return [ref for ref in refs if int(ref["order_index"]) in open_by_market.get(int(ref["market_index"]), set())]
+
+
+async def wait_open_cleanup_orders(client: Any, refs: list[dict[str, Any]], params: dict[str, Any], api_key_index: int, account_index: int) -> list[dict[str, Any]]:
+    attempts = max(1, int(params.get("cleanup_poll_attempts", 5)))
+    interval = max(0, int(params.get("cleanup_poll_interval_ms", 250))) / 1000
+    for attempt in range(attempts):
+        remaining = await open_cleanup_orders(client, refs, params, api_key_index, account_index)
+        if remaining or attempt == attempts - 1:
+            return remaining
+        await asyncio.sleep(interval)
+    return []
 
 
 def orders_list(response: Any) -> list[Any]:
