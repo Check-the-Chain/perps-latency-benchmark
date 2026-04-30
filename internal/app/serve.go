@@ -2,11 +2,16 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,9 +21,11 @@ import (
 )
 
 type serveOptions struct {
-	storePath  string
-	listen     string
-	corsOrigin string
+	storePath       string
+	listen          string
+	corsOrigin      string
+	authUser        string
+	authPasswordEnv string
 }
 
 type summaryRow struct {
@@ -48,10 +55,17 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.storePath, "store", "data/bench.db", "SQLite result store path.")
 	cmd.Flags().StringVar(&opts.listen, "listen", "127.0.0.1:8080", "HTTP listen address.")
 	cmd.Flags().StringVar(&opts.corsOrigin, "cors-origin", "*", "CORS Access-Control-Allow-Origin for API responses.")
+	cmd.Flags().StringVar(&opts.authUser, "auth-user", "bench", "Basic auth username when auth is enabled.")
+	cmd.Flags().StringVar(&opts.authPasswordEnv, "auth-password-env", "PERPS_BENCH_API_PASSWORD", "Environment variable containing the Basic auth password.")
 	return cmd
 }
 
 func serveResults(ctx context.Context, opts *serveOptions) error {
+	password := os.Getenv(opts.authPasswordEnv)
+	if password == "" && requiresServeAuth(opts.listen) {
+		return fmt.Errorf("serving on %s requires %s to be set", opts.listen, opts.authPasswordEnv)
+	}
+
 	db, err := store.OpenSQLite(opts.storePath)
 	if err != nil {
 		return err
@@ -87,7 +101,16 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 		writeJSON(w, map[string]any{"samples": samples})
 	}))
 
-	server := &http.Server{Addr: opts.listen, Handler: mux}
+	var handler http.Handler = mux
+	if password != "" {
+		handler = withBasicAuth(opts.authUser, password, handler)
+	}
+
+	server := &http.Server{
+		Addr:              opts.listen,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	go func() {
 		<-ctx.Done()
 		_ = server.Close()
@@ -97,6 +120,48 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 		return err
 	}
 	return nil
+}
+
+func requiresServeAuth(listen string) bool {
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return true
+	}
+	host = strings.Trim(host, "[]")
+	if host == "" {
+		return true
+	}
+	if strings.EqualFold(host, "localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
+}
+
+func withBasicAuth(user string, password string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+		gotUser, gotPassword, ok := r.BasicAuth()
+		if !ok || !basicAuthEqual(gotUser, gotPassword, user, password) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="perps-bench", charset="UTF-8"`)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func basicAuthEqual(gotUser string, gotPassword string, wantUser string, wantPassword string) bool {
+	gotUserHash := sha256.Sum256([]byte(gotUser))
+	wantUserHash := sha256.Sum256([]byte(wantUser))
+	gotPasswordHash := sha256.Sum256([]byte(gotPassword))
+	wantPasswordHash := sha256.Sum256([]byte(wantPassword))
+	userOK := subtle.ConstantTimeCompare(gotUserHash[:], wantUserHash[:])
+	passwordOK := subtle.ConstantTimeCompare(gotPasswordHash[:], wantPasswordHash[:])
+	return userOK&passwordOK == 1
 }
 
 func summarizeGroups(samples []bench.Sample) []summaryRow {

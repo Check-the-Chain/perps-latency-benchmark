@@ -148,10 +148,22 @@ go run ./cmd/perps-bench serve \
   --listen 127.0.0.1:8080
 ```
 
-Expose it from a server without opening inbound ports:
+Expose it publicly with a password:
 
 ```bash
-cloudflared tunnel --url http://127.0.0.1:8080
+export PERPS_BENCH_API_PASSWORD='choose-a-long-password'
+
+go run ./cmd/perps-bench serve \
+  --store data/bench.db \
+  --listen 0.0.0.0:8080 \
+  --cors-origin ""
+```
+
+Check the API with:
+
+```bash
+curl -u "bench:$PERPS_BENCH_API_PASSWORD" \
+  "http://YOUR_SERVER:8080/api/latest?window=5m"
 ```
 
 ## Safety
