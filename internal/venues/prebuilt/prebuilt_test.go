@@ -176,6 +176,52 @@ func TestPrebuiltVenueUsesSeparateWebSocketBody(t *testing.T) {
 	}
 }
 
+func TestPrebuiltVenueCanDrainInitialWebSocketMessage(t *testing.T) {
+	received := make(chan string, 1)
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"connected"}`))
+		msgType, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Errorf("read: %v", err)
+			return
+		}
+		received <- string(data)
+		_ = conn.WriteMessage(msgType, []byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	venue, err := New(Config{
+		Name:          "test",
+		Transport:     "websocket",
+		WSURL:         "ws" + strings.TrimPrefix(server.URL, "http"),
+		WSBody:        `{"ws":true}`,
+		WSReadInitial: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer venue.Close(context.Background())
+
+	prepared, err := venue.Prepare(context.Background(), bench.ScenarioSingle, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepared.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-received; got != `{"ws":true}` {
+		t.Fatalf("received = %s", got)
+	}
+}
+
 func TestPrebuiltVenueUsesBuilderBodyForWebSocket(t *testing.T) {
 	received := make(chan string, 1)
 	upgrader := websocket.Upgrader{}

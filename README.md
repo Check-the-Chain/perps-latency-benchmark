@@ -99,6 +99,14 @@ Summaries default to full response latency. Use TTFB instead with:
 --latency-mode ttfb
 ```
 
+Compare saved result files:
+
+```bash
+go run ./cmd/perps-bench compare-results \
+  results/hyperliquid.json \
+  results/lighter.json
+```
+
 ## HTTPS vs WebSocket
 
 Some venues support order submission over both HTTPS and WebSocket. Compare them

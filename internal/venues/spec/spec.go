@@ -36,6 +36,7 @@ type Definition struct {
 	DefaultBatchURL   string
 	DefaultWSURL      string
 	DefaultWSBatchURL string
+	WSReadInitial     bool
 	Capabilities      Capabilities
 	BuilderParams     BuilderParams
 	Classifier        lifecycle.Classifier
@@ -69,6 +70,7 @@ func (d Definition) Build(cfg Config) (bench.Venue, error) {
 	if req.WSBatchURL == "" {
 		req.WSBatchURL = cmp.Or(d.DefaultWSBatchURL, req.WSURL)
 	}
+	req.WSReadInitial = d.WSReadInitial
 	req.Classifier = d.Classifier
 
 	return prebuilt.New(req)

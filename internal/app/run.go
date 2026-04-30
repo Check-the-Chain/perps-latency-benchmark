@@ -204,8 +204,9 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 		LatencyMode: benchConfig.LatencyMode,
 	}
 	for _, transport := range transports {
-		variantCfg := cfg
+		variantCfg := cloneFileConfig(cfg)
 		setTransport(&variantCfg, venueName, transport)
+		variantCfg.Benchmark.RunID = benchConfig.RunID + "-" + transport
 		if err := validateRunConfig(venueName, variantCfg); err != nil {
 			return err
 		}

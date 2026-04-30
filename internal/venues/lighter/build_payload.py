@@ -63,13 +63,13 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
                 tx_infos.append(tx_info)
                 cleanup_orders.append(cleanup_ref)
             body = urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)})
-            ws_body = compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": tx_types, "tx_infos": tx_infos}})
+            ws_body = compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}})
             metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "run_id": params.get("run_id"), "cleanup_orders": cleanup_orders}
         else:
             order_api_key_index, nonce = order_nonce(client, params, api_key_index, 0)
             tx_type, tx_info, cleanup_ref = sign_order(client, req, params, order_api_key_index, nonce, 0)
             body = urlencode({"tx_type": tx_type, "tx_info": tx_info})
-            ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": tx_info}})
+            ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": json.loads(tx_info)}})
             metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "cleanup_orders": [cleanup_ref]}
     finally:
         await client.close()

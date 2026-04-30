@@ -1,6 +1,8 @@
 package app
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -222,4 +224,35 @@ func mergeRequest(base requestConfig, overlay requestConfig) requestConfig {
 		}
 	}
 	return overlay
+}
+
+func cloneFileConfig(in fileConfig) fileConfig {
+	out := in
+	out.EnvFiles = slices.Clone(in.EnvFiles)
+	out.Request = cloneRequestConfig(in.Request)
+	if in.Venues != nil {
+		out.Venues = make(map[string]venueConfig, len(in.Venues))
+		for name, cfg := range in.Venues {
+			cfg.Request = cloneRequestConfig(cfg.Request)
+			out.Venues[name] = cfg
+		}
+	}
+	out.Hyperliquid.Request = cloneRequestConfig(in.Hyperliquid.Request)
+	out.Lighter.Request = cloneRequestConfig(in.Lighter.Request)
+	return out
+}
+
+func cloneRequestConfig(in requestConfig) requestConfig {
+	out := in
+	out.Headers = maps.Clone(in.Headers)
+	out.Builder = cloneBuilderConfig(in.Builder)
+	return out
+}
+
+func cloneBuilderConfig(in builderConfig) builderConfig {
+	out := in
+	out.Command = slices.Clone(in.Command)
+	out.Env = maps.Clone(in.Env)
+	out.Params = maps.Clone(in.Params)
+	return out
 }

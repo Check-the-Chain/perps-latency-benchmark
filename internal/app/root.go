@@ -31,6 +31,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(run)
 	root.AddCommand(compare)
+	root.AddCommand(newCompareResultsCommand())
 	root.AddCommand(newAccountsCommand())
 	return root
 }

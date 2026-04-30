@@ -32,7 +32,7 @@ func TestWebSocketClientDo(t *testing.T) {
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	client := NewWebSocketClient(wsURL, nil)
+	client := NewWebSocketClient(wsURL, nil, false)
 	defer client.Close()
 
 	result, err := client.Do(context.Background(), []byte(`{"ping":true}`))

@@ -76,7 +76,7 @@ func New(cfg Config) *Venue {
 	return &Venue{
 		server:    server,
 		transport: transport,
-		wsClient:  netlatency.NewWebSocketClient("ws"+strings.TrimPrefix(server.URL, "http"), nil),
+		wsClient:  netlatency.NewWebSocketClient("ws"+strings.TrimPrefix(server.URL, "http"), nil, false),
 	}
 }
 

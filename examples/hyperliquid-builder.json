@@ -22,7 +22,7 @@
     "enabled": true,
     "mode": "best_effort",
     "scope": "after_sample",
-    "timeout_ms": 5000
+    "timeout_ms": 15000
   },
   "request": {
     "transport": "https",

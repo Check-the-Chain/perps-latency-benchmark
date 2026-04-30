@@ -33,6 +33,7 @@ type Config struct {
 	WSBodyFile      string
 	WSBatchBody     string
 	WSBatchBodyFile string
+	WSReadInitial   bool
 	Builder         payload.Builder
 	BuilderParams   map[string]any
 	Classifier      lifecycle.Classifier
@@ -83,9 +84,6 @@ func New(cfg Config) (*Venue, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(body) == 0 && cfg.Builder == nil {
-		return nil, fmt.Errorf("request body or body_file is required")
-	}
 	if len(batchBody) == 0 {
 		batchBody = body
 	}
@@ -102,6 +100,14 @@ func New(cfg Config) (*Venue, error) {
 	}
 	if len(wsBatchBody) == 0 {
 		wsBatchBody = wsBody
+	}
+	if cfg.Builder == nil {
+		if transport == "http" && len(body) == 0 {
+			return nil, fmt.Errorf("request body or body_file is required")
+		}
+		if transport == "websocket" && len(wsBody) == 0 {
+			return nil, fmt.Errorf("request ws_body, ws_body_file, body, or body_file is required")
+		}
 	}
 
 	name := cfg.Name
@@ -137,8 +143,8 @@ func New(cfg Config) (*Venue, error) {
 		builder:       cfg.Builder,
 		builderParams: cfg.BuilderParams,
 		classifier:    cfg.Classifier,
-		wsClient:      newWSClient(transport, cfg.WSURL, headers),
-		wsBatchClient: newWSClient(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers),
+		wsClient:      newWSClient(transport, cfg.WSURL, headers, cfg.WSReadInitial),
+		wsBatchClient: newWSClient(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers, cfg.WSReadInitial),
 	}, nil
 }
 
@@ -289,11 +295,11 @@ func httpTransportLabel(rawURL string) string {
 	return "http"
 }
 
-func newWSClient(transport string, url string, headers http.Header) *netlatency.WebSocketClient {
+func newWSClient(transport string, url string, headers http.Header, readInitial bool) *netlatency.WebSocketClient {
 	if transport != "websocket" || url == "" {
 		return nil
 	}
-	return netlatency.NewWebSocketClient(url, headers)
+	return netlatency.NewWebSocketClient(url, headers, readInitial)
 }
 
 func mergeMetadata(primary map[string]any, fallback map[string]any) map[string]any {

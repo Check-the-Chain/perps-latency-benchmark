@@ -40,6 +40,8 @@ func TestRunLiveRequiresConfirmation(t *testing.T) {
 
 func TestCompareTransportsMockCommand(t *testing.T) {
 	var stdout bytes.Buffer
+	dir := t.TempDir()
+	out := filepath.Join(dir, "comparison.json")
 
 	cmd := NewRootCommand()
 	cmd.SetOut(&stdout)
@@ -51,12 +53,56 @@ func TestCompareTransportsMockCommand(t *testing.T) {
 		"1",
 		"--transports",
 		"https,websocket",
+		"--run-id",
+		"compare-test",
+		"--output",
+		out,
 	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "[https]") || !strings.Contains(stdout.String(), "[websocket]") {
 		t.Fatalf("stdout = %s", stdout.String())
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"run_id": "compare-test"`, `"run_id": "compare-test-https"`, `"run_id": "compare-test-websocket"`} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("comparison output missing %s:\n%s", want, string(data))
+		}
+	}
+}
+
+func TestCompareResultsCommand(t *testing.T) {
+	dir := t.TempDir()
+	resultPath := filepath.Join(dir, "result.json")
+	if err := os.WriteFile(resultPath, []byte(`{
+  "venue": "mock",
+  "scenario": "single",
+  "latency_mode": "total",
+  "reconciliation": {"attempted": true, "ok": true},
+  "samples": [
+    {"venue": "mock", "scenario": "single", "transport": "https", "network_ns": 1000000, "ok": true, "cleanup": {"attempted": true, "ok": true}},
+    {"venue": "mock", "scenario": "single", "transport": "https", "network_ns": 2000000, "ok": true, "cleanup": {"attempted": true, "ok": true}}
+  ]
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"compare-results", resultPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got := stdout.String()
+	for _, want := range []string{"venue", "mock", "https", "2", "1.500", "2/2", "ok"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("compare output missing %q:\n%s", want, got)
+		}
 	}
 }
 
@@ -302,7 +348,7 @@ func TestInjectRunIDAddsBuilderParam(t *testing.T) {
 	cfg := fileConfig{
 		Request: requestConfig{
 			Builder: builderConfig{
-				Params: map[string]any{"price": "75000"},
+				Params: map[string]any{"price": "75000", "run_id": "old"},
 			},
 		},
 	}
@@ -311,6 +357,26 @@ func TestInjectRunIDAddsBuilderParam(t *testing.T) {
 
 	if got := cfg.Request.Builder.Params["run_id"]; got != "run-test" {
 		t.Fatalf("run_id = %v", got)
+	}
+}
+
+func TestCloneFileConfigSeparatesBuilderParams(t *testing.T) {
+	cfg := fileConfig{
+		Request: requestConfig{
+			Builder: builderConfig{
+				Params: map[string]any{"run_id": "base"},
+			},
+		},
+	}
+	cloned := cloneFileConfig(cfg)
+
+	injectRunID(&cloned, "hyperliquid", "child")
+
+	if got := cloned.Request.Builder.Params["run_id"]; got != "child" {
+		t.Fatalf("cloned run_id = %v", got)
+	}
+	if got := cfg.Request.Builder.Params["run_id"]; got != "base" {
+		t.Fatalf("base run_id = %v", got)
 	}
 }
 

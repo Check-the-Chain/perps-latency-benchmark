@@ -11,20 +11,22 @@ import (
 )
 
 type WebSocketClient struct {
-	url       string
-	headers   http.Header
-	dialer    *websocket.Dialer
-	mu        sync.Mutex
-	conn      *websocket.Conn
-	readLimit int64
+	url         string
+	headers     http.Header
+	dialer      *websocket.Dialer
+	mu          sync.Mutex
+	conn        *websocket.Conn
+	readLimit   int64
+	readInitial bool
 }
 
-func NewWebSocketClient(url string, headers http.Header) *WebSocketClient {
+func NewWebSocketClient(url string, headers http.Header, readInitial bool) *WebSocketClient {
 	return &WebSocketClient{
-		url:       url,
-		headers:   headers.Clone(),
-		dialer:    websocket.DefaultDialer,
-		readLimit: 4 << 20,
+		url:         url,
+		headers:     headers.Clone(),
+		dialer:      websocket.DefaultDialer,
+		readLimit:   4 << 20,
+		readInitial: readInitial,
 	}
 }
 
@@ -46,6 +48,9 @@ func (c *WebSocketClient) Do(ctx context.Context, message []byte) (Result, error
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = c.conn.SetWriteDeadline(deadline)
 		_ = c.conn.SetReadDeadline(deadline)
+	} else {
+		_ = c.conn.SetWriteDeadline(time.Time{})
+		_ = c.conn.SetReadDeadline(time.Time{})
 	}
 
 	if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
@@ -81,6 +86,16 @@ func (c *WebSocketClient) ensureConnectedLocked(ctx context.Context) error {
 	conn, _, err := c.dialer.DialContext(ctx, c.url, c.headers)
 	if err != nil {
 		return err
+	}
+	if c.readInitial {
+		if deadline, ok := ctx.Deadline(); ok {
+			_ = conn.SetReadDeadline(deadline)
+		}
+		if _, _, err := conn.ReadMessage(); err != nil {
+			_ = conn.Close()
+			return err
+		}
+		_ = conn.SetReadDeadline(time.Time{})
 	}
 	c.conn = conn
 	return nil

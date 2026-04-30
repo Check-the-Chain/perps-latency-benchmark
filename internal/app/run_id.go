@@ -18,7 +18,5 @@ func setBuilderParam(builder *builderConfig, key string, value any) {
 	if builder.Params == nil {
 		builder.Params = make(map[string]any)
 	}
-	if _, exists := builder.Params[key]; !exists {
-		builder.Params[key] = value
-	}
+	builder.Params[key] = value
 }

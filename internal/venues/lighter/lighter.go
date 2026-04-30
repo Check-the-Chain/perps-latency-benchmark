@@ -24,6 +24,7 @@ func Definition() spec.Definition {
 		DefaultHTTPPath:  DefaultHTTPPath,
 		DefaultBatchPath: DefaultBatchPath,
 		DefaultWSURL:     DefaultWSURL,
+		WSReadInitial:    true,
 		Capabilities: spec.Capabilities{
 			HTTPSingle:      true,
 			HTTPBatch:       true,
@@ -54,6 +55,7 @@ func Definition() spec.Definition {
 			"HTTP batch transaction submission is POST /api/v1/sendTxBatch with signed tx_types and tx_infos form fields.",
 			"WebSocket transaction submission uses type=jsonapi/sendtx with data.tx_type and signed data.tx_info.",
 			"WebSocket batch transaction submission uses type=jsonapi/sendtxbatch with signed data.tx_types and signed data.tx_infos.",
+			"The Lighter stream sends an initial connection message; it is read before timed sends.",
 			"Signing and payload generation are expected to happen before benchmarking; this venue reuses prebuilt request bodies.",
 		},
 	}
