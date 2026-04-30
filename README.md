@@ -8,12 +8,6 @@ Benchmark crypto perps order submission latency.
 - `uv` for live Hyperliquid/Lighter runs
 - Venue accounts funded and configured before using `--confirm-live`
 
-Install dependencies and run the test suite:
-
-```bash
-go test ./...
-```
-
 ## Quick Start: Hyperliquid and Lighter
 
 Generate local wallet material:
@@ -86,28 +80,6 @@ go run ./cmd/perps-bench accounts check --venues hyperliquid,lighter --env-file 
 ```
 
 See `docs/credentials.md` for the full env-file layout.
-
-## Local Smoke Test
-
-Use the mock venue before touching live accounts:
-
-```bash
-go run ./cmd/perps-bench run \
-  --venue mock \
-  --iterations 10 \
-  --warmups 2 \
-  --mock-latency-ms 1
-```
-
-Open-loop/fixed-rate mode:
-
-```bash
-go run ./cmd/perps-bench run \
-  --venue mock \
-  --iterations 100 \
-  --rate 20 \
-  --max-in-flight 16
-```
 
 ## Output Files
 
