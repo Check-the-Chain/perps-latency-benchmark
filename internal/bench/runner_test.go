@@ -24,6 +24,9 @@ func TestRunnerExcludesWarmups(t *testing.T) {
 	if len(result.Samples) != 3 {
 		t.Fatalf("samples = %d", len(result.Samples))
 	}
+	if result.RunID == "" || result.Samples[0].RunID != result.RunID {
+		t.Fatalf("run ids: result=%q sample=%q", result.RunID, result.Samples[0].RunID)
+	}
 	if len(result.MeasuredSamples()) != 2 {
 		t.Fatalf("measured samples = %d", len(result.MeasuredSamples()))
 	}
@@ -86,6 +89,10 @@ func TestRunnerRunsCleanupOutsideMeasuredRequest(t *testing.T) {
 	}
 	if result.Samples[0].Cleanup == nil || !result.Samples[0].Cleanup.OK {
 		t.Fatalf("cleanup = %#v", result.Samples[0].Cleanup)
+	}
+	summary := bench.Summarize(result.Samples)
+	if summary.Cleanup.Attempted != 1 || summary.Cleanup.OK != 1 {
+		t.Fatalf("summary cleanup = %+v", summary.Cleanup)
 	}
 }
 

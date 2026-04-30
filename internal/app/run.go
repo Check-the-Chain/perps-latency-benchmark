@@ -20,6 +20,7 @@ type runOptions struct {
 	envFiles   []string
 
 	venue            string
+	runID            string
 	scenario         string
 	iterations       int
 	warmups          int
@@ -67,6 +68,7 @@ func addRunFlags(cmd *cobra.Command, opts *runOptions) {
 	flags.StringVar(&opts.configPath, "config", "", "JSON config file.")
 	flags.StringArrayVar(&opts.envFiles, "env-file", nil, "Load dotenv credentials file before running. Repeatable; shell environment wins.")
 	flags.StringVar(&opts.venue, "venue", "", "Venue: mock, http, "+strings.Join(registry.Names(), ", ")+".")
+	flags.StringVar(&opts.runID, "run-id", "", "Run identifier used in output and generated client order IDs.")
 	flags.StringVar(&opts.scenario, "scenario", "", "Scenario: single or batch.")
 	flags.IntVar(&opts.iterations, "iterations", 0, "Measured iterations.")
 	flags.IntVar(&opts.warmups, "warmups", 0, "Warmup iterations excluded from stats.")
@@ -188,11 +190,16 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 	}
 
 	benchConfig := cfg.Benchmark.toBenchConfig()
+	if benchConfig.RunID == "" {
+		benchConfig.RunID = bench.NewRunID()
+	}
+	cfg.Benchmark.RunID = benchConfig.RunID
 	if benchConfig.Warmups == 0 {
 		fmt.Fprintln(cmd.ErrOrStderr(), "warning: compare-transports is running with warmups=0; first HTTPS sample may include connection/TLS setup while WebSocket connect is prepared outside the timed send path")
 	}
 	comparison := bench.ComparisonResult{
 		Venue:       venueName,
+		RunID:       benchConfig.RunID,
 		Scenario:    benchConfig.Scenario,
 		LatencyMode: benchConfig.LatencyMode,
 	}
@@ -380,6 +387,13 @@ func checkAccountsForRun(venueName string, cfg fileConfig) error {
 }
 
 func runWithConfig(ctx context.Context, venueName string, cfg fileConfig) (bench.Result, error) {
+	benchConfig := cfg.Benchmark.toBenchConfig()
+	if benchConfig.RunID == "" {
+		benchConfig.RunID = bench.NewRunID()
+	}
+	cfg.Benchmark.RunID = benchConfig.RunID
+	injectRunID(&cfg, venueName, benchConfig.RunID)
+
 	client := netlatency.NewClient(netlatency.ClientConfig{
 		Timeout:             durationMS(cfg.HTTP.TimeoutMS),
 		MaxIdleConns:        cfg.HTTP.MaxIdleConns,
@@ -393,7 +407,6 @@ func runWithConfig(ctx context.Context, venueName string, cfg fileConfig) (bench
 		return bench.Result{}, err
 	}
 
-	benchConfig := cfg.Benchmark.toBenchConfig()
 	benchConfig.Cleanup = cfg.Cleanup.toBenchCleanupConfig()
 	cleanupAdapter, err := buildCleanupAdapter(venueName, cfg, client)
 	if err != nil {

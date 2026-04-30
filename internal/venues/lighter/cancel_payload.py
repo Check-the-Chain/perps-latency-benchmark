@@ -49,7 +49,8 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
     try:
         tx_types, tx_infos = [], []
         for offset, order in enumerate(orders):
-            tx_type, tx_info = sign_cancel(client, order, api_key_index, cleanup_nonce(builder_params, offset))
+            cancel_api_key_index, nonce = cleanup_nonce(client, builder_params, api_key_index, offset)
+            tx_type, tx_info = sign_cancel(client, order, cancel_api_key_index, nonce)
             tx_types.append(tx_type)
             tx_infos.append(tx_info)
     finally:
@@ -82,12 +83,12 @@ def sign_cancel(client: Any, order: dict[str, Any], api_key_index: int, nonce: i
     return tx_type, tx_info
 
 
-def cleanup_nonce(params: dict[str, Any], offset: int) -> int:
+def cleanup_nonce(client: Any, params: dict[str, Any], api_key_index: int, offset: int) -> tuple[int, int]:
     if params.get("cleanup_nonce_base") is not None:
-        return int(params["cleanup_nonce_base"]) + offset
+        return api_key_index, int(params["cleanup_nonce_base"]) + offset
     if params.get("cleanup_nonce") is not None:
-        return int(params["cleanup_nonce"])
-    return -1
+        return api_key_index, int(params["cleanup_nonce"])
+    return client.get_api_key_nonce(api_key_index, -1)
 
 
 def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:

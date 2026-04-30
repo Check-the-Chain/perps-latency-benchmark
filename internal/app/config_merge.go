@@ -15,6 +15,9 @@ func applyFlagOverrides(cmd *cobra.Command, opts *runOptions, cfg *fileConfig) {
 	if flags.Changed("venue") {
 		cfg.Venue = opts.venue
 	}
+	if flags.Changed("run-id") {
+		cfg.Benchmark.RunID = opts.runID
+	}
 	if flags.Changed("env-file") {
 		cfg.EnvFiles = append(cfg.EnvFiles, opts.envFiles...)
 	}

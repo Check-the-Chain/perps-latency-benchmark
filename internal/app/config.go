@@ -26,6 +26,7 @@ type fileConfig struct {
 }
 
 type benchmarkConfig struct {
+	RunID         string  `json:"run_id"`
 	Scenario      string  `json:"scenario"`
 	Iterations    int     `json:"iterations"`
 	Warmups       int     `json:"warmups"`
@@ -225,6 +226,7 @@ func validateNoInlineSecrets(cfg fileConfig) error {
 
 func (c benchmarkConfig) toBenchConfig() bench.Config {
 	return bench.Config{
+		RunID:         c.RunID,
 		Scenario:      bench.Scenario(c.Scenario),
 		Iterations:    c.Iterations,
 		Warmups:       c.Warmups,

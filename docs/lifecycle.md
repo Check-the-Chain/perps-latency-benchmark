@@ -52,4 +52,7 @@ Cleanup modes:
 - `strict`: fail the sample if cleanup fails.
 
 Cleanup is not included in `network_ns`; it is stored separately under
-`sample.cleanup`.
+`sample.cleanup`. Result output includes a `run_id`; for Hyperliquid and
+Lighter, generated client order identifiers are derived from that run ID,
+iteration, market, side, and order offset unless the config explicitly provides
+its own client ID fields.

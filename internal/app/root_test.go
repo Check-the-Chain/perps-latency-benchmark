@@ -298,6 +298,22 @@ func TestValidateRunConfigUsesVenueBuilderDefaults(t *testing.T) {
 	}
 }
 
+func TestInjectRunIDAddsBuilderParam(t *testing.T) {
+	cfg := fileConfig{
+		Request: requestConfig{
+			Builder: builderConfig{
+				Params: map[string]any{"price": "75000"},
+			},
+		},
+	}
+
+	injectRunID(&cfg, "hyperliquid", "run-test")
+
+	if got := cfg.Request.Builder.Params["run_id"]; got != "run-test" {
+		t.Fatalf("run_id = %v", got)
+	}
+}
+
 func TestValidateCleanupRejectsUnsupportedVenue(t *testing.T) {
 	cfg := fileConfig{Cleanup: cleanupConfig{Enabled: true, Mode: "best_effort", Scope: "after_sample"}}
 

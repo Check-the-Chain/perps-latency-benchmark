@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import time
+import hashlib
 from typing import Any
 
 
@@ -67,7 +68,7 @@ def build(
     batch_size = int(req.get("batch_size") or 1)
     orders = params.get("orders")
     if orders is None:
-        orders = [order_from_params(params, offset, Cloid) for offset in range(batch_size if scenario == "batch" else 1)]
+        orders = [order_from_params(params, req, offset, Cloid) for offset in range(batch_size if scenario == "batch" else 1)]
     if scenario != "batch":
         orders = orders[:1]
 
@@ -101,7 +102,7 @@ def build(
     built: dict[str, Any] = {
         "headers": {"Content-Type": "application/json"},
         "body": compact_json(payload),
-        "metadata": {"builder": "hyperliquid-python-sdk", "nonce": nonce, "cleanup_orders": cleanup_orders},
+        "metadata": {"builder": "hyperliquid-python-sdk", "nonce": nonce, "run_id": params.get("run_id"), "cleanup_orders": cleanup_orders},
     }
     if req.get("transport") == "websocket":
         built["ws_body"] = compact_json(
@@ -114,11 +115,11 @@ def build(
     return built
 
 
-def order_from_params(params: dict[str, Any], offset: int, Cloid: Any) -> dict[str, Any]:
+def order_from_params(params: dict[str, Any], req: dict[str, Any], offset: int, Cloid: Any) -> dict[str, Any]:
     asset = params.get("asset")
     if asset is None:
         raise SystemExit("Hyperliquid builder requires params.asset for symbol-to-asset mapping")
-    cloid = order_cloid(params, offset, Cloid)
+    cloid = order_cloid(params, req, offset, Cloid)
     order: dict[str, Any] = {
         "coin": params.get("symbol", "BTC"),
         "is_buy": str(params.get("side", "buy")).lower() == "buy",
@@ -133,7 +134,7 @@ def order_from_params(params: dict[str, Any], offset: int, Cloid: Any) -> dict[s
     return order
 
 
-def order_cloid(params: dict[str, Any], offset: int, Cloid: Any) -> Any:
+def order_cloid(params: dict[str, Any], req: dict[str, Any], offset: int, Cloid: Any) -> Any:
     if params.get("cloid_base") is not None:
         return Cloid.from_int((int(str(params["cloid_base"]), 0) + offset) & ((1 << 128) - 1))
     if params.get("cloid") is not None:
@@ -141,6 +142,10 @@ def order_cloid(params: dict[str, Any], offset: int, Cloid: Any) -> Any:
         if offset:
             return Cloid.from_int((int(raw, 16) + offset) & ((1 << 128) - 1))
         return Cloid.from_str(raw)
+    run_id = params.get("run_id")
+    if run_id:
+        seed = f"{run_id}:{req.get('iteration', 0)}:{params.get('symbol', 'BTC')}:{params.get('side', 'buy')}:{offset}".encode()
+        return Cloid.from_int(int.from_bytes(hashlib.blake2b(seed, digest_size=16).digest(), "big"))
     return Cloid.from_int(((time.time_ns() << 16) + offset) & ((1 << 128) - 1))
 
 

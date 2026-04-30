@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import asyncio
+import hashlib
 from typing import Any
 from urllib.parse import urlencode
 
@@ -55,20 +56,21 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         if scenario == "batch":
             tx_types, tx_infos = [], []
             cleanup_orders = []
-            nonce_base = int(params.get("nonce_base") or time.time_ns())
             for offset in range(batch_size):
-                tx_type, tx_info, cleanup_ref = sign_order(client, params, api_key_index, nonce_base + offset, offset)
+                order_api_key_index, nonce = order_nonce(client, params, api_key_index, offset)
+                tx_type, tx_info, cleanup_ref = sign_order(client, req, params, order_api_key_index, nonce, offset)
                 tx_types.append(tx_type)
                 tx_infos.append(tx_info)
                 cleanup_orders.append(cleanup_ref)
             body = urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)})
             ws_body = compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": tx_types, "tx_infos": tx_infos}})
-            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "cleanup_orders": cleanup_orders}
+            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "run_id": params.get("run_id"), "cleanup_orders": cleanup_orders}
         else:
-            tx_type, tx_info, cleanup_ref = sign_order(client, params, api_key_index, int(params.get("nonce") or -1), 0)
+            order_api_key_index, nonce = order_nonce(client, params, api_key_index, 0)
+            tx_type, tx_info, cleanup_ref = sign_order(client, req, params, order_api_key_index, nonce, 0)
             body = urlencode({"tx_type": tx_type, "tx_info": tx_info})
             ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": tx_info}})
-            metadata = {"builder": "lighter-python-sdk", "orders": 1, "cleanup_orders": [cleanup_ref]}
+            metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "cleanup_orders": [cleanup_ref]}
     finally:
         await client.close()
 
@@ -80,8 +82,8 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
     }
 
 
-def sign_order(client: Any, params: dict[str, Any], api_key_index: int, nonce: int, offset: int) -> tuple[int, str, dict[str, Any]]:
-    client_order_index = int(params.get("client_order_index") or (time.time_ns() % 2_000_000_000)) + offset
+def sign_order(client: Any, req: dict[str, Any], params: dict[str, Any], api_key_index: int, nonce: int, offset: int) -> tuple[int, str, dict[str, Any]]:
+    client_order_index = order_index(req, params, offset)
     market_index = int(params["market_index"])
     tx_type, tx_info, _tx_hash, error = client.sign_create_order(
         market_index=market_index,
@@ -103,6 +105,24 @@ def sign_order(client: Any, params: dict[str, Any], api_key_index: int, nonce: i
         "market_index": market_index,
         "order_index": client_order_index,
     }
+
+
+def order_index(req: dict[str, Any], params: dict[str, Any], offset: int) -> int:
+    if params.get("client_order_index") is not None:
+        return int(params["client_order_index"]) + offset
+    run_id = params.get("run_id")
+    if run_id:
+        seed = f"{run_id}:{req.get('iteration', 0)}:{params.get('market_index')}:{params.get('side', 'buy')}:{offset}".encode()
+        return int.from_bytes(hashlib.blake2b(seed, digest_size=8).digest(), "big") % 1_900_000_000
+    return int(time.time_ns() % 2_000_000_000) + offset
+
+
+def order_nonce(client: Any, params: dict[str, Any], api_key_index: int, offset: int) -> tuple[int, int]:
+    if params.get("nonce_base") is not None:
+        return api_key_index, int(params["nonce_base"]) + offset
+    if params.get("nonce") is not None:
+        return api_key_index, int(params["nonce"])
+    return client.get_api_key_nonce(api_key_index, -1)
 
 
 def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:

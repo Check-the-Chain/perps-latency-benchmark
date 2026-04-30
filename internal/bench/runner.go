@@ -20,6 +20,9 @@ type Runner struct {
 
 func (r Runner) Run(ctx context.Context) (Result, error) {
 	cfg := r.Config.Normalized()
+	if cfg.RunID == "" {
+		cfg.RunID = NewRunID()
+	}
 	if r.Client == nil {
 		return Result{}, fmt.Errorf("missing network client")
 	}
@@ -52,6 +55,7 @@ func (r Runner) runClosedLoop(ctx context.Context, cfg Config) Result {
 
 	return Result{
 		Venue:       r.Venue.Name(),
+		RunID:       cfg.RunID,
 		Scenario:    cfg.Scenario,
 		LatencyMode: cfg.LatencyMode,
 		Samples:     samples,
@@ -115,6 +119,7 @@ schedule:
 
 	return Result{
 		Venue:       r.Venue.Name(),
+		RunID:       cfg.RunID,
 		Scenario:    cfg.Scenario,
 		LatencyMode: cfg.LatencyMode,
 		Samples:     samples,
@@ -133,6 +138,7 @@ func (r Runner) runOnce(ctx context.Context, cfg Config, index int, iteration in
 	if err != nil {
 		return Sample{
 			Venue:       r.Venue.Name(),
+			RunID:       cfg.RunID,
 			Scenario:    cfg.Scenario,
 			Index:       index,
 			Iteration:   iteration,
@@ -164,6 +170,7 @@ func (r Runner) runOnce(ctx context.Context, cfg Config, index int, iteration in
 	completedAt := time.Now().UTC()
 	sample := Sample{
 		Venue:          r.Venue.Name(),
+		RunID:          cfg.RunID,
 		Scenario:       cfg.Scenario,
 		Transport:      transportName(prepared.Transport, netResult.Trace.Transport),
 		Index:          index,

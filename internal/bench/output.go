@@ -66,6 +66,11 @@ func WriteCSV(path string, samples []Sample) error {
 		"ok",
 		"classification",
 		"classification_reason",
+		"cleanup_attempted",
+		"cleanup_ok",
+		"cleanup_status_code",
+		"cleanup_duration_ns",
+		"cleanup_error",
 		"error",
 		"completed_at",
 	}); err != nil {
@@ -73,6 +78,7 @@ func WriteCSV(path string, samples []Sample) error {
 	}
 
 	for _, sample := range samples {
+		cleanupAttempted, cleanupOK, cleanupStatusCode, cleanupDurationNS, cleanupError := cleanupCSVFields(sample.Cleanup)
 		if err := writer.Write([]string{
 			sample.Venue,
 			string(sample.Scenario),
@@ -92,6 +98,11 @@ func WriteCSV(path string, samples []Sample) error {
 			strconv.FormatBool(sample.OK),
 			string(sample.Classification.Status),
 			secrets.RedactString(sample.Classification.Reason),
+			cleanupAttempted,
+			cleanupOK,
+			cleanupStatusCode,
+			cleanupDurationNS,
+			cleanupError,
 			secrets.RedactString(sample.Error),
 			sample.CompletedAt.Format("2006-01-02T15:04:05.000000000Z07:00"),
 		}); err != nil {
@@ -99,4 +110,15 @@ func WriteCSV(path string, samples []Sample) error {
 		}
 	}
 	return nil
+}
+
+func cleanupCSVFields(cleanup *CleanupResult) (string, string, string, string, string) {
+	if cleanup == nil {
+		return "", "", "", "", ""
+	}
+	return strconv.FormatBool(cleanup.Attempted),
+		strconv.FormatBool(cleanup.OK),
+		strconv.Itoa(cleanup.StatusCode),
+		strconv.FormatInt(cleanup.DurationNS, 10),
+		secrets.RedactString(cleanup.Error)
 }

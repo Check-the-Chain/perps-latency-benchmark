@@ -127,8 +127,11 @@ validating repeatability.
 
 Hyperliquid and Lighter support best-effort cleanup of benchmark orders by
 client order identifier. Cleanup is recorded in JSON samples and is not included
-in latency summaries. Use strict cleanup only when you want cleanup failures to
-fail the sample:
+in latency summaries. The summary prints cleanup attempted/ok/failed/skipped
+counts. Each run also gets a `run_id`, and Hyperliquid/Lighter client order IDs
+are derived from it. Pass `--run-id` when you want a human-readable or
+externally supplied run identifier. Use strict cleanup only when you want
+cleanup failures to fail the sample:
 
 ```bash
 --cleanup --cleanup-mode strict

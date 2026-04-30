@@ -8,15 +8,23 @@ import (
 )
 
 type Summary struct {
-	Count  int     `json:"count"`
-	OK     int     `json:"ok"`
-	Failed int     `json:"failed"`
-	MinMS  float64 `json:"min_ms"`
-	MeanMS float64 `json:"mean_ms"`
-	P50MS  float64 `json:"p50_ms"`
-	P95MS  float64 `json:"p95_ms"`
-	P99MS  float64 `json:"p99_ms"`
-	MaxMS  float64 `json:"max_ms"`
+	Count   int            `json:"count"`
+	OK      int            `json:"ok"`
+	Failed  int            `json:"failed"`
+	Cleanup CleanupSummary `json:"cleanup"`
+	MinMS   float64        `json:"min_ms"`
+	MeanMS  float64        `json:"mean_ms"`
+	P50MS   float64        `json:"p50_ms"`
+	P95MS   float64        `json:"p95_ms"`
+	P99MS   float64        `json:"p99_ms"`
+	MaxMS   float64        `json:"max_ms"`
+}
+
+type CleanupSummary struct {
+	Attempted int `json:"attempted"`
+	OK        int `json:"ok"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
 }
 
 func Summarize(samples []Sample) Summary {
@@ -24,10 +32,23 @@ func Summarize(samples []Sample) Summary {
 	var totalNS int64
 	var ok int
 	var failed int
+	var cleanup CleanupSummary
 
 	for _, sample := range samples {
 		if sample.Warmup {
 			continue
+		}
+		if sample.Cleanup != nil {
+			if sample.Cleanup.Attempted {
+				cleanup.Attempted++
+				if sample.Cleanup.OK {
+					cleanup.OK++
+				} else {
+					cleanup.Failed++
+				}
+			} else {
+				cleanup.Skipped++
+			}
 		}
 		if !sample.OK {
 			failed++
@@ -42,7 +63,7 @@ func Summarize(samples []Sample) Summary {
 		ok++
 	}
 
-	summary := Summary{Count: ok + failed, OK: ok, Failed: failed}
+	summary := Summary{Count: ok + failed, OK: ok, Failed: failed, Cleanup: cleanup}
 	if ok == 0 {
 		return summary
 	}
@@ -60,8 +81,9 @@ func FormatSummary(result Result) string {
 	summary := Summarize(result.Samples)
 	lines := []string{
 		fmt.Sprintf(
-			"venue=%s scenario=%s latency_mode=%s count=%d ok=%d failed=%d",
+			"venue=%s run_id=%s scenario=%s latency_mode=%s count=%d ok=%d failed=%d",
 			result.Venue,
+			result.RunID,
 			result.Scenario,
 			result.LatencyMode,
 			summary.Count,
@@ -78,6 +100,15 @@ func FormatSummary(result Result) string {
 			summary.P95MS,
 			summary.P99MS,
 			summary.MaxMS,
+		))
+	}
+	if summary.Cleanup.Attempted > 0 || summary.Cleanup.Skipped > 0 {
+		lines = append(lines, fmt.Sprintf(
+			"cleanup attempted=%d ok=%d failed=%d skipped=%d",
+			summary.Cleanup.Attempted,
+			summary.Cleanup.OK,
+			summary.Cleanup.Failed,
+			summary.Cleanup.Skipped,
 		))
 	}
 	for _, sample := range result.Samples {

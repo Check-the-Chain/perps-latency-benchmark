@@ -23,6 +23,7 @@ const (
 )
 
 type Config struct {
+	RunID         string
 	Scenario      Scenario
 	Iterations    int
 	Warmups       int
@@ -86,6 +87,7 @@ type CleanupResult struct {
 
 type Sample struct {
 	Venue          string                   `json:"venue"`
+	RunID          string                   `json:"run_id,omitempty"`
 	Scenario       Scenario                 `json:"scenario"`
 	Transport      string                   `json:"transport"`
 	Index          int                      `json:"index"`
@@ -111,6 +113,7 @@ type Sample struct {
 
 type Result struct {
 	Venue       string      `json:"venue"`
+	RunID       string      `json:"run_id,omitempty"`
 	Scenario    Scenario    `json:"scenario"`
 	LatencyMode LatencyMode `json:"latency_mode"`
 	Samples     []Sample    `json:"samples"`
@@ -118,6 +121,7 @@ type Result struct {
 
 type ComparisonResult struct {
 	Venue       string      `json:"venue"`
+	RunID       string      `json:"run_id,omitempty"`
 	Scenario    Scenario    `json:"scenario"`
 	LatencyMode LatencyMode `json:"latency_mode"`
 	Results     []Result    `json:"results"`
