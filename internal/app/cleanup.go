@@ -28,6 +28,7 @@ func buildCleanupAdapter(venueName string, cfg fileConfig, client *netlatency.Cl
 	if venueCfg.BaseURL != "" {
 		params["base_url"] = venueCfg.BaseURL
 	}
+	params["neutralize_on_fill"] = cfg.Risk.NeutralizeOnFill
 	timeout := durationMS(cleanupCfg.TimeoutMS)
 
 	switch definition.Name {

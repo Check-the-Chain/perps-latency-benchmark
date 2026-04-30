@@ -159,8 +159,9 @@ cloudflared tunnel --url http://127.0.0.1:8080
 Live runs require `--confirm-live`.
 
 Fill-likely order profiles, including market, IOC, FOK, and explicit
-non-post-only orders, are blocked. Use post-only/maker-style orders while
-validating repeatability.
+non-post-only orders, require `risk.allow_fill=true`,
+`risk.neutralize_on_fill=true`, and strict after-sample cleanup. Start with
+post-only/maker-style orders while validating setup.
 
 Hyperliquid and Lighter support cleanup of benchmark orders by client order
 identifier. Cleanup runs outside the measured latency window. At startup, the

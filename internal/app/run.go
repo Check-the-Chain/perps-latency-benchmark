@@ -345,9 +345,24 @@ func validateLifecycleForRun(venueName string, cfg fileConfig) error {
 		return fmt.Errorf("risk validation failed: %w", err)
 	}
 	if lifecycle.FillLikely(profile) && cfg.Risk.AllowFill {
-		return fmt.Errorf("risk validation failed: fill-likely order profiles require a venue cleanup/neutralization adapter; %s does not have one wired yet", venueName)
+		if !supportsNeutralization(venueName) {
+			return fmt.Errorf("risk validation failed: fill-likely order profiles require a venue cleanup/neutralization adapter; %s does not have one wired yet", venueName)
+		}
+		cleanupCfg := cfg.Cleanup.toBenchCleanupConfig()
+		if !cleanupCfg.Enabled || cleanupCfg.Mode != bench.CleanupModeStrict || cleanupCfg.Scope != bench.CleanupScopeAfterSample {
+			return fmt.Errorf("risk validation failed: fill-likely order profiles require strict after-sample cleanup")
+		}
 	}
 	return nil
+}
+
+func supportsNeutralization(venueName string) bool {
+	switch venueName {
+	case "hyperliquid", "lighter":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateCleanupForRun(venueName string, cfg fileConfig) error {

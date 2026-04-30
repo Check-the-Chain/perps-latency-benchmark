@@ -87,6 +87,7 @@ func (a *CommandAdapter) AfterSample(ctx context.Context, sample bench.Sample) b
 		"phase":          "after_sample",
 		"sample":         sample,
 		"metadata":       sample.Metadata,
+		"run_metadata":   a.currentRunMetadata(),
 		"builder_params": a.cfg.StaticParams,
 	}
 	return a.run(ctx, start, payload.Request{
@@ -179,7 +180,7 @@ func (a *CommandAdapter) run(ctx context.Context, start time.Time, req payload.R
 		StatusCode:  result.StatusCode,
 		DurationNS:  time.Since(start).Nanoseconds(),
 		BytesRead:   result.BytesRead,
-		Description: cmp.Or(a.cfg.Description, "cleanup"),
+		Description: cmp.Or(cleanupDescription(built.Metadata), a.cfg.Description, "cleanup"),
 		Metadata:    cleanupMetadata(built.Metadata),
 	}
 	if err != nil {
@@ -234,6 +235,11 @@ func cleanupMetadata(metadata map[string]any) map[string]any {
 		return copyMap(value)
 	}
 	return nil
+}
+
+func cleanupDescription(metadata map[string]any) string {
+	value, _ := metadata["cleanup"].(string)
+	return value
 }
 
 func copyMap(value map[string]any) map[string]any {

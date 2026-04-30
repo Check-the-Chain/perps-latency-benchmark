@@ -125,13 +125,19 @@ def order_from_params(params: dict[str, Any], req: dict[str, Any], offset: int, 
         "is_buy": str(params.get("side", "buy")).lower() == "buy",
         "sz": float(params["size"]),
         "limit_px": float(params["price"]),
-        "order_type": {"limit": {"tif": params.get("tif", "Alo")}},
+        "order_type": {"limit": {"tif": order_tif(params)}},
         "reduce_only": bool(params.get("reduce_only", False)),
         "asset": asset,
     }
     if cloid:
         order["cloid"] = cloid
     return order
+
+
+def order_tif(params: dict[str, Any]) -> str:
+    if str(params.get("order_type", "")).lower() == "market":
+        return params.get("tif", "Ioc")
+    return params.get("tif", "Alo")
 
 
 def order_cloid(params: dict[str, Any], req: dict[str, Any], offset: int, Cloid: Any) -> Any:

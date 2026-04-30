@@ -7,6 +7,8 @@ import asyncio
 import json
 import os
 import sys
+import time
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
@@ -70,6 +72,13 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
             orders = cleanup_orders(dict(params.get("metadata") or {}))
             if not orders:
                 return cleanup_result(False, True, "no lighter cleanup_orders")
+            remaining = await open_cleanup_orders(client, orders, builder_params, api_key_index, account_index)
+            if not remaining:
+                neutralize = await neutralize_payload(client, params, builder_params, api_key_index, account_index)
+                if neutralize:
+                    return neutralize
+                return cleanup_result(False, True, "no lighter cleanup action needed")
+            orders = remaining
 
         tx_types, tx_infos = [], []
         for offset, order in enumerate(orders):
@@ -177,16 +186,80 @@ async def position_snapshot(client: Any, account_index: int) -> list[dict[str, s
     positions = getattr(accounts[0], "positions", None)
     if positions is None and isinstance(accounts[0], dict):
         positions = accounts[0].get("positions")
-    return sorted(position_item(position) for position in (positions or []))
+    return sorted(item for item in (position_item(position) for position in (positions or [])) if Decimal(item["size"]) != 0)
 
 
 def position_item(position: Any) -> dict[str, str]:
     data = position.to_dict() if hasattr(position, "to_dict") else position
     if not isinstance(data, dict):
         data = {}
-    market = data.get("market_index") or data.get("market_id") or data.get("symbol") or ""
-    size = data.get("position") or data.get("position_size") or data.get("open_order_base_amount") or data.get("base_amount") or data.get("size") or ""
+    market = first_present(data, "market_index", "market_id", "symbol")
+    size = first_present(data, "position", "position_size", "open_order_base_amount", "base_amount", "size")
     return {"market": str(market), "size": str(size)}
+
+
+async def neutralize_payload(client: Any, params: dict[str, Any], builder_params: dict[str, Any], api_key_index: int, account_index: int) -> dict[str, Any] | None:
+    if not bool(builder_params.get("neutralize_on_fill")):
+        return None
+    before_position = dict(params.get("run_metadata") or {}).get("position")
+    if before_position is None:
+        return None
+    after_position = await position_snapshot(client, account_index)
+    market_index = int(builder_params["market_index"])
+    delta = position_size(after_position, market_index) - position_size(before_position, market_index)
+    if delta == 0:
+        return None
+
+    order_api_key_index, nonce = cleanup_nonce(client, builder_params, api_key_index, 0)
+    tx_type, tx_info, _tx_hash, error = client.sign_create_order(
+        market_index=market_index,
+        client_order_index=int(time.time_ns() % 1_900_000_000),
+        base_amount=abs(int(delta)),
+        price=neutralize_price(builder_params, delta < 0),
+        is_ask=delta > 0,
+        order_type=int(builder_params.get("neutralize_order_type", client.ORDER_TYPE_MARKET)),
+        time_in_force=int(builder_params.get("neutralize_time_in_force", client.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL)),
+        reduce_only=True,
+        order_expiry=int(builder_params.get("neutralize_order_expiry", client.DEFAULT_IOC_EXPIRY)),
+        nonce=nonce,
+        api_key_index=order_api_key_index,
+    )
+    if error:
+        raise SystemExit(f"Lighter sign neutralize order failed: {error}")
+    return {
+        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        "body": urlencode({"tx_type": tx_type, "tx_info": tx_info}),
+        "metadata": {
+            "cleanup": "neutralize_position",
+            "orders": 1,
+            "reconciliation": {"position_before": before_position, "position_after": after_position, "delta": str(delta)},
+        },
+    }
+
+
+def position_size(positions: list[dict[str, Any]], market_index: int) -> Decimal:
+    for position in positions or []:
+        if str(position.get("market", "")) == str(market_index):
+            return Decimal(str(position.get("size", "0") or "0"))
+    return Decimal("0")
+
+
+def neutralize_price(builder_params: dict[str, Any], is_buy: bool) -> int:
+    if builder_params.get("neutralize_price") is not None:
+        return int(builder_params["neutralize_price"])
+    price = Decimal(str(builder_params["price"]))
+    slippage_bps = Decimal(str(builder_params.get("neutralize_slippage_bps", "500")))
+    multiplier = Decimal("1") + slippage_bps / Decimal("10000")
+    if is_buy:
+        return int(price * multiplier)
+    return int(price / multiplier)
+
+
+def first_present(data: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in data and data[key] is not None:
+            return data[key]
+    return ""
 
 
 def cleanup_result(attempted: bool, ok: bool, description: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:

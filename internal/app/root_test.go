@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"perps-latency-benchmark/internal/lifecycle"
 )
 
 func TestRunMockCommand(t *testing.T) {
@@ -262,6 +264,30 @@ func TestRunRejectsFillLikelyProfileWithoutLifecycleAdapter(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cleanup/neutralization adapter") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRunAllowsFillLikelyProfileOnlyWithStrictNeutralization(t *testing.T) {
+	cfg := fileConfig{
+		Venue:   "lighter",
+		Risk:    lifecycle.RiskConfig{AllowFill: true, NeutralizeOnFill: true},
+		Cleanup: cleanupConfig{Enabled: true, Mode: "strict", Scope: "after_sample"},
+		Request: requestConfig{
+			Builder: builderConfig{
+				Type:    "command",
+				Command: []string{"echo", "{}"},
+				Params:  map[string]any{"market_index": 1, "base_amount": 100, "price": 750000, "order_type": 1, "time_in_force": 0},
+			},
+		},
+	}
+
+	if err := validateLifecycleForRun("lighter", cfg); err != nil {
+		t.Fatalf("validateLifecycleForRun = %v", err)
+	}
+
+	cfg.Cleanup.Mode = "best_effort"
+	if err := validateLifecycleForRun("lighter", cfg); err == nil {
+		t.Fatal("expected strict cleanup requirement")
 	}
 }
 

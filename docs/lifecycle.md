@@ -11,9 +11,9 @@ The benchmark currently implements the safe parts of the lifecycle:
 5. Run optional cleanup outside the measured network window.
 6. Record classification and cleanup status in JSON results.
 
-Fill-likely orders are intentionally blocked for now. Market, IOC, FOK, and
-explicit non-post-only profiles require venue-specific cleanup and inventory
-reconciliation before they should be benchmarked repeatedly.
+Fill-likely orders require venue-specific cleanup and inventory reconciliation
+before they can be benchmarked repeatedly. Hyperliquid and Lighter support
+strict after-sample neutralization for small fillable profiles.
 
 Hyperliquid and Lighter have cleanup adapters for:
 
@@ -21,13 +21,10 @@ Hyperliquid and Lighter have cleanup adapters for:
 - startup stale-order cleanup for the same `run_id`
 - after-run open-order reconciliation for submitted benchmark refs
 - after-run position reconciliation against the startup position snapshot
+- after-sample reduce-only neutralization when `risk.neutralize_on_fill` is set
 
-The next lifecycle layer should add concrete venue adapters for:
-
-- neutralize unexpected or intentional fills
-
-Until neutralization exists, use post-only/maker-style profiles for live
-repeated runs.
+Use post-only/maker-style profiles while validating setup. Only enable fillable
+profiles with strict cleanup.
 
 Risk config:
 

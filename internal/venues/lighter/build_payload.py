@@ -94,7 +94,7 @@ def sign_order(client: Any, req: dict[str, Any], params: dict[str, Any], api_key
         order_type=int(params.get("order_type", client.ORDER_TYPE_LIMIT)),
         time_in_force=int(params.get("time_in_force", client.ORDER_TIME_IN_FORCE_POST_ONLY)),
         reduce_only=bool(params.get("reduce_only", False)),
-        order_expiry=int(params.get("order_expiry", client.DEFAULT_28_DAY_ORDER_EXPIRY)),
+        order_expiry=order_expiry(client, params),
         nonce=nonce,
         api_key_index=api_key_index,
     )
@@ -105,6 +105,16 @@ def sign_order(client: Any, req: dict[str, Any], params: dict[str, Any], api_key
         "market_index": market_index,
         "order_index": client_order_index,
     }
+
+
+def order_expiry(client: Any, params: dict[str, Any]) -> int:
+    if params.get("order_expiry") is not None:
+        return int(params["order_expiry"])
+    order_type = int(params.get("order_type", client.ORDER_TYPE_LIMIT))
+    time_in_force = int(params.get("time_in_force", client.ORDER_TIME_IN_FORCE_POST_ONLY))
+    if order_type == client.ORDER_TYPE_MARKET or time_in_force == client.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL:
+        return client.DEFAULT_IOC_EXPIRY
+    return client.DEFAULT_28_DAY_ORDER_EXPIRY
 
 
 def order_index(req: dict[str, Any], params: dict[str, Any], offset: int) -> int:
