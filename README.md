@@ -1,15 +1,11 @@
 # Perps Latency Benchmark
 
-Benchmark network latency for crypto perps order submission.
-
-The benchmark is designed to measure the venue request path, not signing time.
-Example configs build/sign each order before the timed network call, then record
-request latency, response classification, and optional JSON/CSV output.
+Benchmark crypto perps order submission latency.
 
 ## Prerequisites
 
 - Go 1.25+
-- `uv` for live SDK-backed Hyperliquid/Lighter runs
+- `uv` for live Hyperliquid/Lighter runs
 - Venue accounts funded and configured before using `--confirm-live`
 
 Install dependencies and run the test suite:
@@ -20,7 +16,7 @@ go test ./...
 
 ## Quick Start: Hyperliquid and Lighter
 
-Generate local wallet material. The output file is ignored by git.
+Generate local wallet material:
 
 ```bash
 go run ./cmd/perps-bench accounts generate \
@@ -148,17 +144,15 @@ go run ./cmd/perps-bench compare-transports \
   --output results/hyperliquid-transports.json
 ```
 
-The CLI rejects transport/scenario combinations that are not supported for a
-venue.
+Unsupported transport/scenario combinations fail before the run starts.
 
 ## Safety
 
 Live runs require `--confirm-live`.
 
 Fill-likely order profiles, including market, IOC, FOK, and explicit
-non-post-only orders, are blocked until cleanup and inventory-neutralization
-logic exists for the venue. Use post-only/maker-style orders while validating
-repeatability.
+non-post-only orders, are blocked. Use post-only/maker-style orders while
+validating repeatability.
 
 ## Supported Venue Status
 
@@ -167,7 +161,7 @@ repeatability.
 - GRVT: HTTPS and WebSocket single/batch order submission.
 - edgeX: HTTPS single order submission.
 - Extended: HTTPS single order submission.
-- Aster: HTTPS endpoints documented, SDK-backed builder not included yet.
+- Aster: HTTPS endpoints documented, live builder not included yet.
 - Variational Omni: registered, but current public docs do not verify order
   submission.
 
