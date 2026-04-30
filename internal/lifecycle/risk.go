@@ -48,11 +48,11 @@ func ValidateRisk(risk RiskConfig, profile OrderProfile) error {
 func FillLikely(profile OrderProfile) bool {
 	orderType := strings.ToLower(profile.OrderType)
 	tif := strings.ToLower(profile.TimeInForce)
-	if strings.Contains(orderType, "market") {
+	if strings.Contains(orderType, "market") || orderType == "1" {
 		return true
 	}
 	switch tif {
-	case "ioc", "immediate_or_cancel", "fok", "fill_or_kill":
+	case "0", "ioc", "immediate_or_cancel", "fok", "fill_or_kill":
 		return true
 	default:
 		return isFalse(profile.PostOnly)
@@ -68,6 +68,12 @@ func firstString(params map[string]any, keys ...string) string {
 		switch typed := value.(type) {
 		case string:
 			return typed
+		case int:
+			return fmt.Sprint(typed)
+		case int64:
+			return fmt.Sprint(typed)
+		case float64:
+			return fmt.Sprintf("%.0f", typed)
 		case fmt.Stringer:
 			return typed.String()
 		}
@@ -102,5 +108,5 @@ func isFalse(value *bool) bool {
 
 func isPostOnlyTIF(value string) bool {
 	normalized := strings.ToLower(value)
-	return normalized == "alo" || normalized == "post_only" || normalized == "postonly"
+	return normalized == "2" || normalized == "alo" || normalized == "post_only" || normalized == "postonly"
 }

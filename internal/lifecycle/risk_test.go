@@ -39,3 +39,21 @@ func TestProfileFromParamsAndFillLikely(t *testing.T) {
 		t.Fatalf("expected fill-likely profile")
 	}
 }
+
+func TestProfileFromNumericLighterParams(t *testing.T) {
+	market := ProfileFromParams(map[string]any{
+		"order_type":    1,
+		"time_in_force": 0,
+	})
+	if !FillLikely(market) {
+		t.Fatalf("expected numeric market order to be fill-likely: %#v", market)
+	}
+
+	postOnly := ProfileFromParams(map[string]any{
+		"order_type":    0,
+		"time_in_force": 2,
+	})
+	if err := ValidateRisk(RiskConfig{RequirePostOnly: true}, postOnly); err != nil {
+		t.Fatalf("post-only numeric profile rejected: %v", err)
+	}
+}
