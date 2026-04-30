@@ -65,7 +65,7 @@ func Classify(in lifecycle.ResponseInput) lifecycle.Classification {
 
 func classify(in lifecycle.ResponseInput) lifecycle.Classification {
 	generic := lifecycle.ClassifyResponse(in)
-	if in.Err != nil || len(in.Body) == 0 || !generic.OK() {
+	if in.Err != nil || len(in.Body) == 0 {
 		return generic
 	}
 	var decoded map[string]any
@@ -77,6 +77,9 @@ func classify(in lifecycle.ResponseInput) lifecycle.Classification {
 	}
 	if success, ok := decoded["success"].(bool); ok && !success {
 		return lifecycle.Classification{Status: lifecycle.StatusRejected, Reason: reason(decoded)}
+	}
+	if !generic.OK() {
+		return generic
 	}
 	return generic
 }

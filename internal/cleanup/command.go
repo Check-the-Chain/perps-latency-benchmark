@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"perps-latency-benchmark/internal/bench"
@@ -31,9 +32,11 @@ type CommandConfig struct {
 }
 
 type CommandAdapter struct {
-	cfg     CommandConfig
-	builder payload.Builder
-	headers http.Header
+	cfg         CommandConfig
+	builder     payload.Builder
+	headers     http.Header
+	mu          sync.Mutex
+	runMetadata map[string]any
 }
 
 func NewCommandAdapter(cfg CommandConfig) (*CommandAdapter, error) {
@@ -98,7 +101,7 @@ func (a *CommandAdapter) AfterSample(ctx context.Context, sample bench.Sample) b
 
 func (a *CommandAdapter) BeforeRun(ctx context.Context, run bench.CleanupRun) bench.CleanupResult {
 	start := time.Now()
-	return a.run(ctx, start, payload.Request{
+	cleanup := a.run(ctx, start, payload.Request{
 		Venue:     run.Venue,
 		Scenario:  run.Scenario,
 		BatchSize: run.BatchSize,
@@ -108,6 +111,10 @@ func (a *CommandAdapter) BeforeRun(ctx context.Context, run bench.CleanupRun) be
 			"builder_params": a.cfg.StaticParams,
 		},
 	})
+	a.mu.Lock()
+	a.runMetadata = copyMap(cleanup.Metadata)
+	a.mu.Unlock()
+	return cleanup
 }
 
 func (a *CommandAdapter) AfterRun(ctx context.Context, result bench.Result) bench.CleanupResult {
@@ -119,6 +126,7 @@ func (a *CommandAdapter) AfterRun(ctx context.Context, result bench.Result) benc
 		Params: map[string]any{
 			"phase":          "after_run",
 			"result":         result,
+			"run_metadata":   a.currentRunMetadata(),
 			"builder_params": a.cfg.StaticParams,
 		},
 	})
@@ -172,6 +180,7 @@ func (a *CommandAdapter) run(ctx context.Context, start time.Time, req payload.R
 		DurationNS:  time.Since(start).Nanoseconds(),
 		BytesRead:   result.BytesRead,
 		Description: cmp.Or(a.cfg.Description, "cleanup"),
+		Metadata:    cleanupMetadata(built.Metadata),
 	}
 	if err != nil {
 		cleanup.Error = err.Error()
@@ -182,6 +191,12 @@ func (a *CommandAdapter) run(ctx context.Context, start time.Time, req payload.R
 		}
 	}
 	return cleanup
+}
+
+func (a *CommandAdapter) currentRunMetadata() map[string]any {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return copyMap(a.runMetadata)
 }
 
 func (a *CommandAdapter) Close(ctx context.Context) error {
@@ -212,4 +227,22 @@ func hasOrderRefs(metadata map[string]any, field string) bool {
 		return len(values) > 0
 	}
 	return true
+}
+
+func cleanupMetadata(metadata map[string]any) map[string]any {
+	if value, ok := metadata["reconciliation"].(map[string]any); ok {
+		return copyMap(value)
+	}
+	return nil
+}
+
+func copyMap(value map[string]any) map[string]any {
+	if len(value) == 0 {
+		return nil
+	}
+	copied := make(map[string]any, len(value))
+	for key, item := range value {
+		copied[key] = item
+	}
+	return copied
 }

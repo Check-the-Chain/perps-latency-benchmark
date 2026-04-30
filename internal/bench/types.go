@@ -90,13 +90,14 @@ type CleanupRun struct {
 }
 
 type CleanupResult struct {
-	Attempted   bool   `json:"attempted"`
-	OK          bool   `json:"ok"`
-	StatusCode  int    `json:"status_code,omitempty"`
-	Error       string `json:"error,omitempty"`
-	DurationNS  int64  `json:"duration_ns,omitempty"`
-	BytesRead   int64  `json:"bytes_read,omitempty"`
-	Description string `json:"description,omitempty"`
+	Attempted   bool           `json:"attempted"`
+	OK          bool           `json:"ok"`
+	StatusCode  int            `json:"status_code,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	DurationNS  int64          `json:"duration_ns,omitempty"`
+	BytesRead   int64          `json:"bytes_read,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 type Sample struct {

@@ -20,13 +20,13 @@ Hyperliquid and Lighter have cleanup adapters for:
 - cancel by client order ID
 - startup stale-order cleanup for the same `run_id`
 - after-run open-order reconciliation for submitted benchmark refs
+- after-run position reconciliation against the startup position snapshot
 
 The next lifecycle layer should add concrete venue adapters for:
 
-- get current position
 - neutralize unexpected or intentional fills
 
-Until position adapters exist, use post-only/maker-style profiles for live
+Until neutralization exists, use post-only/maker-style profiles for live
 repeated runs.
 
 Risk config:

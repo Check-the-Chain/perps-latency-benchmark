@@ -43,17 +43,29 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         api_private_keys={api_key_index: private_key},
         account_index=account_index,
     )
+    client.account_api = lighter.AccountApi(client.api_client)
     try:
         phase = params.get("phase", "after_sample")
+        reconciliation = {}
         if phase == "before_run":
+            position = await position_snapshot(client, account_index)
+            reconciliation = {"position": position}
             orders = await open_cleanup_orders(client, planned_orders(params, builder_params), builder_params, api_key_index, account_index)
             if not orders:
-                return cleanup_result(False, True, "no stale lighter benchmark orders")
+                return cleanup_result(False, True, "no stale lighter benchmark orders", metadata={"position": position})
         elif phase == "after_run":
             remaining = await open_cleanup_orders(client, result_orders(dict(params.get("result") or {})), builder_params, api_key_index, account_index)
+            before_position = dict(params.get("run_metadata") or {}).get("position")
+            after_position = await position_snapshot(client, account_index)
+            problems = []
             if remaining:
-                return cleanup_result(True, False, f"{len(remaining)} lighter benchmark orders still open")
-            return cleanup_result(True, True, "no lighter benchmark orders open after run")
+                problems.append(f"{len(remaining)} lighter benchmark orders still open")
+            if before_position is not None and before_position != after_position:
+                problems.append("lighter position changed during run")
+            metadata = {"position_before": before_position, "position_after": after_position}
+            if problems:
+                return cleanup_result(True, False, "; ".join(problems), metadata=metadata)
+            return cleanup_result(True, True, "no lighter benchmark orders open after run and position unchanged", metadata=metadata)
         else:
             orders = cleanup_orders(dict(params.get("metadata") or {}))
             if not orders:
@@ -73,13 +85,13 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         return {
             "headers": headers,
             "body": urlencode({"tx_type": tx_types[0], "tx_info": tx_infos[0]}),
-            "metadata": {"cleanup": "cancel_order", "orders": 1},
+            "metadata": {"cleanup": "cancel_order", "orders": 1, "reconciliation": reconciliation},
         }
     return {
         "url": builder_params.get("cancel_batch_url", "https://mainnet.zklighter.elliot.ai/api/v1/sendTxBatch"),
         "headers": headers,
         "body": urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}),
-        "metadata": {"cleanup": "cancel_order", "orders": len(tx_types)},
+        "metadata": {"cleanup": "cancel_order", "orders": len(tx_types), "reconciliation": reconciliation},
     }
 
 
@@ -155,10 +167,34 @@ def order_index_value(order: Any) -> int:
     return -1
 
 
-def cleanup_result(attempted: bool, ok: bool, description: str) -> dict[str, Any]:
+async def position_snapshot(client: Any, account_index: int) -> list[dict[str, str]]:
+    response = await client.account_api.account(by="index", value=str(account_index))
+    accounts = getattr(response, "accounts", None)
+    if accounts is None and isinstance(response, dict):
+        accounts = response.get("accounts")
+    if not accounts:
+        return []
+    positions = getattr(accounts[0], "positions", None)
+    if positions is None and isinstance(accounts[0], dict):
+        positions = accounts[0].get("positions")
+    return sorted(position_item(position) for position in (positions or []))
+
+
+def position_item(position: Any) -> dict[str, str]:
+    data = position.to_dict() if hasattr(position, "to_dict") else position
+    if not isinstance(data, dict):
+        data = {}
+    market = data.get("market_index") or data.get("market_id") or data.get("symbol") or ""
+    size = data.get("position") or data.get("position_size") or data.get("open_order_base_amount") or data.get("base_amount") or data.get("size") or ""
+    return {"market": str(market), "size": str(size)}
+
+
+def cleanup_result(attempted: bool, ok: bool, description: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     result = {"attempted": attempted, "ok": ok, "description": description}
     if not ok:
         result["error"] = description
+    if metadata:
+        result["metadata"] = metadata
     return {"cleanup": result}
 
 

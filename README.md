@@ -128,11 +128,11 @@ validating repeatability.
 Hyperliquid and Lighter support cleanup of benchmark orders by client order
 identifier. Cleanup runs outside the measured latency window. At startup, the
 runner checks for stale orders from the same `run_id`; after the run, it
-reconciles that no submitted benchmark orders remain open. Each run gets a
-`run_id`, and Hyperliquid/Lighter client order IDs are derived from it. Pass
-`--run-id` when you want a human-readable or externally supplied run
-identifier. Use strict cleanup when you want cleanup failures to fail the
-sample:
+reconciles that no submitted benchmark orders remain open and the position did
+not change. Each run gets a `run_id`, and Hyperliquid/Lighter client order IDs
+are derived from it. Pass `--run-id` when you want a human-readable or
+externally supplied run identifier. Use strict cleanup when you want cleanup
+failures to fail the sample:
 
 ```bash
 --cleanup --cleanup-mode strict

@@ -3,9 +3,11 @@ package lighter
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"perps-latency-benchmark/internal/bench"
+	"perps-latency-benchmark/internal/lifecycle"
 	"perps-latency-benchmark/internal/venues/prebuilt"
 	"perps-latency-benchmark/internal/venues/spec"
 )
@@ -85,5 +87,19 @@ func TestWebSocketWrapperTypesMatchLighterDocs(t *testing.T) {
 	}
 	if WebSocketSendTxBatchType != "jsonapi/sendtxbatch" {
 		t.Fatalf("WebSocketSendTxBatchType = %q", WebSocketSendTxBatchType)
+	}
+}
+
+func TestClassifyPreservesLighterErrorMessage(t *testing.T) {
+	classification := Classify(lifecycle.ResponseInput{
+		StatusCode: 400,
+		Body:       []byte(`{"code":20558,"message":"restricted jurisdiction"}`),
+	})
+
+	if classification.Status != lifecycle.StatusRejected {
+		t.Fatalf("classification = %+v", classification)
+	}
+	if !strings.Contains(classification.Reason, "restricted jurisdiction") {
+		t.Fatalf("reason = %q", classification.Reason)
 	}
 }

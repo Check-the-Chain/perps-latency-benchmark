@@ -49,22 +49,31 @@ def build(req: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str, si
 
 
 def before_run(params: dict[str, Any], builder_params: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str, sign_l1_action: Any, Cloid: Any) -> dict[str, Any]:
+    position = position_snapshot(builder_params, Account, Info, MAINNET_API_URL)
     planned = planned_orders(params, builder_params, Cloid)
     open_orders = open_cleanup_orders(planned, builder_params, Account, Info, MAINNET_API_URL)
     if not open_orders:
-        return cleanup_result(False, True, "no stale hyperliquid benchmark orders")
-    return cancel_payload(open_orders, builder_params, Account, MAINNET_API_URL, sign_l1_action)
+        return cleanup_result(False, True, "no stale hyperliquid benchmark orders", metadata={"position": position})
+    return cancel_payload(open_orders, builder_params, Account, MAINNET_API_URL, sign_l1_action, metadata={"position": position})
 
 
 def after_run(params: dict[str, Any], builder_params: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str) -> dict[str, Any]:
     refs = result_orders(dict(params.get("result") or {}))
     remaining = open_cleanup_orders(refs, builder_params, Account, Info, MAINNET_API_URL)
+    before_position = dict(params.get("run_metadata") or {}).get("position")
+    after_position = position_snapshot(builder_params, Account, Info, MAINNET_API_URL)
+    problems = []
     if remaining:
-        return cleanup_result(True, False, f"{len(remaining)} hyperliquid benchmark orders still open")
-    return cleanup_result(True, True, "no hyperliquid benchmark orders open after run")
+        problems.append(f"{len(remaining)} hyperliquid benchmark orders still open")
+    if before_position is not None and before_position != after_position:
+        problems.append("hyperliquid position changed during run")
+    metadata = {"position_before": before_position, "position_after": after_position}
+    if problems:
+        return cleanup_result(True, False, "; ".join(problems), metadata=metadata)
+    return cleanup_result(True, True, "no hyperliquid benchmark orders open after run and position unchanged", metadata=metadata)
 
 
-def cancel_payload(orders: list[dict[str, Any]], builder_params: dict[str, Any], Account: Any, MAINNET_API_URL: str, sign_l1_action: Any) -> dict[str, Any]:
+def cancel_payload(orders: list[dict[str, Any]], builder_params: dict[str, Any], Account: Any, MAINNET_API_URL: str, sign_l1_action: Any, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     wallet = Account.from_key(env_or_param(builder_params, "secret_key", "HYPERLIQUID_SECRET_KEY"))
     action = {
         "type": "cancelByCloid",
@@ -89,7 +98,7 @@ def cancel_payload(orders: list[dict[str, Any]], builder_params: dict[str, Any],
     return {
         "headers": {"Content-Type": "application/json"},
         "body": compact_json(payload),
-        "metadata": {"cleanup": "cancelByCloid", "orders": len(orders), "nonce": nonce},
+        "metadata": {"cleanup": "cancelByCloid", "orders": len(orders), "nonce": nonce, "reconciliation": metadata or {}},
     }
 
 
@@ -138,10 +147,25 @@ def open_cleanup_orders(refs: list[dict[str, Any]], builder_params: dict[str, An
     return [ref for ref in refs if str(ref.get("cloid")) in open_cloids]
 
 
-def cleanup_result(attempted: bool, ok: bool, description: str) -> dict[str, Any]:
+def position_snapshot(builder_params: dict[str, Any], Account: Any, Info: Any, MAINNET_API_URL: str) -> list[dict[str, str]]:
+    wallet = Account.from_key(env_or_param(builder_params, "secret_key", "HYPERLIQUID_SECRET_KEY"))
+    info = Info(builder_params.get("base_url", MAINNET_API_URL), skip_ws=True)
+    positions = []
+    for wrapped in info.user_state(wallet.address).get("assetPositions") or []:
+        pos = wrapped.get("position") or {}
+        positions.append({
+            "coin": str(pos.get("coin", "")),
+            "szi": str(pos.get("szi", "0")),
+        })
+    return sorted(positions, key=lambda item: item["coin"])
+
+
+def cleanup_result(attempted: bool, ok: bool, description: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     result = {"attempted": attempted, "ok": ok, "description": description}
     if not ok:
         result["error"] = description
+    if metadata:
+        result["metadata"] = metadata
     return {"cleanup": result}
 
 

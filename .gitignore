@@ -10,4 +10,4 @@ __pycache__/
 coverage.out
 bin/
 dist/
-tmp/
+tmp
