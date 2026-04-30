@@ -12,9 +12,10 @@ import (
 )
 
 type Runner struct {
-	Config Config
-	Client *netlatency.Client
-	Venue  Venue
+	Config  Config
+	Client  *netlatency.Client
+	Venue   Venue
+	Cleanup CleanupAdapter
 }
 
 func (r Runner) Run(ctx context.Context) (Result, error) {
@@ -26,6 +27,9 @@ func (r Runner) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("missing venue")
 	}
 	defer r.Venue.Close(ctx)
+	if r.Cleanup != nil {
+		defer r.Cleanup.Close(ctx)
+	}
 
 	if cfg.RatePerSecond > 0 {
 		return r.runOpenLoop(ctx, cfg), nil
@@ -188,7 +192,25 @@ func (r Runner) runOnce(ctx context.Context, cfg Config, index int, iteration in
 			sample.Error += ": " + classification.Reason
 		}
 	}
+	if cleanup := r.cleanupAfterSample(ctx, cfg, sample); cleanup != nil {
+		sample.Cleanup = cleanup
+		if cfg.Cleanup.Mode == CleanupModeStrict && !cleanup.OK {
+			sample.OK = false
+			sample.Error = appendError(sample.Error, "cleanup: "+cleanup.Error)
+		}
+	}
 	return sample
+}
+
+func (r Runner) cleanupAfterSample(ctx context.Context, cfg Config, sample Sample) *CleanupResult {
+	if r.Cleanup == nil || !cfg.Cleanup.Enabled || cfg.Cleanup.Scope != CleanupScopeAfterSample {
+		return nil
+	}
+	if !sample.OK {
+		return nil
+	}
+	cleanup := r.Cleanup.AfterSample(ctx, sample)
+	return &cleanup
 }
 
 func (r Runner) execute(ctx context.Context, prepared PreparedRequest) (netlatency.Result, error) {
@@ -234,4 +256,14 @@ func transportName(prepared string, measured string) string {
 		return measured
 	}
 	return "http"
+}
+
+func appendError(current string, extra string) string {
+	if current == "" {
+		return extra
+	}
+	if extra == "" {
+		return current
+	}
+	return current + "; " + extra
 }

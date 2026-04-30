@@ -31,6 +31,28 @@ type Config struct {
 	MaxInFlight   int
 	StopOnError   bool
 	LatencyMode   LatencyMode
+	Cleanup       CleanupConfig
+}
+
+type CleanupMode string
+
+const (
+	CleanupModeOff        CleanupMode = "off"
+	CleanupModeBestEffort CleanupMode = "best_effort"
+	CleanupModeStrict     CleanupMode = "strict"
+)
+
+type CleanupScope string
+
+const (
+	CleanupScopeAfterSample CleanupScope = "after_sample"
+)
+
+type CleanupConfig struct {
+	Enabled   bool
+	Mode      CleanupMode
+	Scope     CleanupScope
+	TimeoutMS int
 }
 
 type PreparedRequest struct {
@@ -45,6 +67,21 @@ type Venue interface {
 	Name() string
 	Prepare(ctx context.Context, scenario Scenario, iteration int, batchSize int) (PreparedRequest, error)
 	Close(ctx context.Context) error
+}
+
+type CleanupAdapter interface {
+	AfterSample(ctx context.Context, sample Sample) CleanupResult
+	Close(ctx context.Context) error
+}
+
+type CleanupResult struct {
+	Attempted   bool   `json:"attempted"`
+	OK          bool   `json:"ok"`
+	StatusCode  int    `json:"status_code,omitempty"`
+	Error       string `json:"error,omitempty"`
+	DurationNS  int64  `json:"duration_ns,omitempty"`
+	BytesRead   int64  `json:"bytes_read,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type Sample struct {
@@ -66,6 +103,7 @@ type Sample struct {
 	OK             bool                     `json:"ok"`
 	Error          string                   `json:"error,omitempty"`
 	Classification lifecycle.Classification `json:"classification"`
+	Cleanup        *CleanupResult           `json:"cleanup,omitempty"`
 	Trace          netlatency.Trace         `json:"trace"`
 	Metadata       map[string]any           `json:"metadata,omitempty"`
 	CompletedAt    time.Time                `json:"completed_at"`
@@ -113,6 +151,24 @@ func (c Config) Normalized() Config {
 	}
 	if c.LatencyMode == "" {
 		c.LatencyMode = LatencyModeTotal
+	}
+	c.Cleanup = c.Cleanup.Normalized()
+	return c
+}
+
+func (c CleanupConfig) Normalized() CleanupConfig {
+	if !c.Enabled {
+		c.Mode = CleanupModeOff
+		return c
+	}
+	if c.Mode == "" {
+		c.Mode = CleanupModeBestEffort
+	}
+	if c.Scope == "" {
+		c.Scope = CleanupScopeAfterSample
+	}
+	if c.TimeoutMS == 0 {
+		c.TimeoutMS = 5000
 	}
 	return c
 }

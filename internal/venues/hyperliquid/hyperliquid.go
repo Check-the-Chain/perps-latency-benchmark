@@ -55,6 +55,10 @@ func Definition() spec.Definition {
 	}
 }
 
+func Classify(in lifecycle.ResponseInput) lifecycle.Classification {
+	return classify(in)
+}
+
 func classify(in lifecycle.ResponseInput) lifecycle.Classification {
 	generic := lifecycle.ClassifyResponse(in)
 	if in.Err != nil || len(in.Body) == 0 || !generic.OK() {

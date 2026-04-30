@@ -54,19 +54,21 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         batch_size = int(req.get("batch_size") or 1)
         if scenario == "batch":
             tx_types, tx_infos = [], []
+            cleanup_orders = []
             nonce_base = int(params.get("nonce_base") or time.time_ns())
             for offset in range(batch_size):
-                tx_type, tx_info = sign_order(client, params, api_key_index, nonce_base + offset, offset)
+                tx_type, tx_info, cleanup_ref = sign_order(client, params, api_key_index, nonce_base + offset, offset)
                 tx_types.append(tx_type)
                 tx_infos.append(tx_info)
+                cleanup_orders.append(cleanup_ref)
             body = urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)})
             ws_body = compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": tx_types, "tx_infos": tx_infos}})
-            metadata = {"builder": "lighter-python-sdk", "orders": batch_size}
+            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "cleanup_orders": cleanup_orders}
         else:
-            tx_type, tx_info = sign_order(client, params, api_key_index, int(params.get("nonce") or -1), 0)
+            tx_type, tx_info, cleanup_ref = sign_order(client, params, api_key_index, int(params.get("nonce") or -1), 0)
             body = urlencode({"tx_type": tx_type, "tx_info": tx_info})
             ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": tx_info}})
-            metadata = {"builder": "lighter-python-sdk", "orders": 1}
+            metadata = {"builder": "lighter-python-sdk", "orders": 1, "cleanup_orders": [cleanup_ref]}
     finally:
         await client.close()
 
@@ -78,10 +80,11 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
     }
 
 
-def sign_order(client: Any, params: dict[str, Any], api_key_index: int, nonce: int, offset: int) -> tuple[int, str]:
+def sign_order(client: Any, params: dict[str, Any], api_key_index: int, nonce: int, offset: int) -> tuple[int, str, dict[str, Any]]:
     client_order_index = int(params.get("client_order_index") or (time.time_ns() % 2_000_000_000)) + offset
+    market_index = int(params["market_index"])
     tx_type, tx_info, _tx_hash, error = client.sign_create_order(
-        market_index=int(params["market_index"]),
+        market_index=market_index,
         client_order_index=client_order_index,
         base_amount=int(params["base_amount"]),
         price=int(params["price"]),
@@ -95,7 +98,11 @@ def sign_order(client: Any, params: dict[str, Any], api_key_index: int, nonce: i
     )
     if error:
         raise SystemExit(f"Lighter sign_create_order failed: {error}")
-    return tx_type, tx_info
+    return tx_type, tx_info, {
+        "venue": "lighter",
+        "market_index": market_index,
+        "order_index": client_order_index,
+    }
 
 
 def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:

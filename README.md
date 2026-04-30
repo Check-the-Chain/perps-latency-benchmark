@@ -65,7 +65,8 @@ go run ./cmd/perps-bench run \
 ```
 
 The starter configs use small post-only BTC orders. Keep them small until
-account setup is confirmed.
+account setup is confirmed. Hyperliquid and Lighter starter configs also cancel
+benchmark orders after each measured submit, outside the latency window.
 
 ## Account Commands
 
@@ -123,6 +124,15 @@ Live runs require `--confirm-live`.
 Fill-likely order profiles, including market, IOC, FOK, and explicit
 non-post-only orders, are blocked. Use post-only/maker-style orders while
 validating repeatability.
+
+Hyperliquid and Lighter support best-effort cleanup of benchmark orders by
+client order identifier. Cleanup is recorded in JSON samples and is not included
+in latency summaries. Use strict cleanup only when you want cleanup failures to
+fail the sample:
+
+```bash
+--cleanup --cleanup-mode strict
+```
 
 ## Supported Venue Status
 

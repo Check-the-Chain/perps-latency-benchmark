@@ -2,6 +2,7 @@ package bench_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"perps-latency-benchmark/internal/bench"
@@ -65,6 +66,55 @@ func TestRunnerUsesPreparedClassifier(t *testing.T) {
 	}
 }
 
+func TestRunnerRunsCleanupOutsideMeasuredRequest(t *testing.T) {
+	cleanup := &fakeCleanup{result: bench.CleanupResult{Attempted: true, OK: true, Description: "cancel"}}
+	result, err := bench.Runner{
+		Config: bench.Config{
+			Scenario:   bench.ScenarioSingle,
+			Iterations: 1,
+			Cleanup:    bench.CleanupConfig{Enabled: true, Mode: bench.CleanupModeBestEffort, Scope: bench.CleanupScopeAfterSample},
+		},
+		Client:  NewTestClient(),
+		Venue:   mock.New(mock.Config{}),
+		Cleanup: cleanup,
+	}.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleanup.calls != 1 {
+		t.Fatalf("cleanup calls = %d", cleanup.calls)
+	}
+	if result.Samples[0].Cleanup == nil || !result.Samples[0].Cleanup.OK {
+		t.Fatalf("cleanup = %#v", result.Samples[0].Cleanup)
+	}
+}
+
+func TestRunnerStrictCleanupFailureFailsSample(t *testing.T) {
+	result, err := bench.Runner{
+		Config: bench.Config{
+			Scenario:   bench.ScenarioSingle,
+			Iterations: 1,
+			Cleanup:    bench.CleanupConfig{Enabled: true, Mode: bench.CleanupModeStrict, Scope: bench.CleanupScopeAfterSample},
+		},
+		Client:  NewTestClient(),
+		Venue:   mock.New(mock.Config{}),
+		Cleanup: &fakeCleanup{result: bench.CleanupResult{Attempted: true, OK: false, Error: "cancel failed"}},
+	}.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample := result.Samples[0]
+	if sample.OK {
+		t.Fatalf("sample unexpectedly ok: %+v", sample)
+	}
+	if sample.Cleanup == nil || sample.Cleanup.Error != "cancel failed" {
+		t.Fatalf("cleanup = %#v", sample.Cleanup)
+	}
+	if !strings.Contains(sample.Error, "cleanup: cancel failed") {
+		t.Fatalf("error = %q", sample.Error)
+	}
+}
+
 func TestRunnerOpenLoopStopsSchedulingWhenContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -85,6 +135,20 @@ func TestRunnerOpenLoopStopsSchedulingWhenContextCanceled(t *testing.T) {
 	if len(result.Samples) != 0 {
 		t.Fatalf("samples = %d, want 0", len(result.Samples))
 	}
+}
+
+type fakeCleanup struct {
+	result bench.CleanupResult
+	calls  int
+}
+
+func (c *fakeCleanup) AfterSample(context.Context, bench.Sample) bench.CleanupResult {
+	c.calls++
+	return c.result
+}
+
+func (c *fakeCleanup) Close(context.Context) error {
+	return nil
 }
 
 type classifierVenue struct {

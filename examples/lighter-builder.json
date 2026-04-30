@@ -18,6 +18,12 @@
   "risk": {
     "require_post_only": true
   },
+  "cleanup": {
+    "enabled": true,
+    "mode": "best_effort",
+    "scope": "after_sample",
+    "timeout_ms": 5000
+  },
   "request": {
     "transport": "https",
     "builder": {

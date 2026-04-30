@@ -17,6 +17,7 @@ type fileConfig struct {
 	Benchmark   benchmarkConfig        `json:"benchmark"`
 	HTTP        httpConfig             `json:"http"`
 	Risk        lifecycle.RiskConfig   `json:"risk"`
+	Cleanup     cleanupConfig          `json:"cleanup"`
 	Mock        mockConfig             `json:"mock"`
 	Request     requestConfig          `json:"request"`
 	Venues      map[string]venueConfig `json:"venues"`
@@ -40,6 +41,13 @@ type httpConfig struct {
 	MaxIdleConns        int  `json:"max_idle_conns"`
 	MaxIdleConnsPerHost int  `json:"max_idle_conns_per_host"`
 	DisableCompression  bool `json:"disable_compression"`
+}
+
+type cleanupConfig struct {
+	Enabled   bool   `json:"enabled"`
+	Mode      string `json:"mode"`
+	Scope     string `json:"scope"`
+	TimeoutMS int    `json:"timeout_ms"`
 }
 
 type mockConfig struct {
@@ -225,5 +233,20 @@ func (c benchmarkConfig) toBenchConfig() bench.Config {
 		MaxInFlight:   c.MaxInFlight,
 		StopOnError:   c.StopOnError,
 		LatencyMode:   bench.LatencyMode(c.LatencyMode),
+		Cleanup: bench.CleanupConfig{
+			Enabled:   false,
+			Mode:      bench.CleanupModeOff,
+			Scope:     bench.CleanupScopeAfterSample,
+			TimeoutMS: 0,
+		},
+	}.Normalized()
+}
+
+func (c cleanupConfig) toBenchCleanupConfig() bench.CleanupConfig {
+	return bench.CleanupConfig{
+		Enabled:   c.Enabled,
+		Mode:      bench.CleanupMode(c.Mode),
+		Scope:     bench.CleanupScope(c.Scope),
+		TimeoutMS: c.TimeoutMS,
 	}.Normalized()
 }

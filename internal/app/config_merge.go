@@ -42,6 +42,18 @@ func applyFlagOverrides(cmd *cobra.Command, opts *runOptions, cfg *fileConfig) {
 	if flags.Changed("stop-on-error") {
 		cfg.Benchmark.StopOnError = opts.stopOnError
 	}
+	if flags.Changed("cleanup") {
+		cfg.Cleanup.Enabled = opts.cleanup
+	}
+	if flags.Changed("cleanup-mode") {
+		cfg.Cleanup.Mode = opts.cleanupMode
+	}
+	if flags.Changed("cleanup-scope") {
+		cfg.Cleanup.Scope = opts.cleanupScope
+	}
+	if flags.Changed("cleanup-timeout-ms") {
+		cfg.Cleanup.TimeoutMS = opts.cleanupTimeoutMS
+	}
 	if flags.Changed("timeout-ms") {
 		cfg.HTTP.TimeoutMS = opts.timeoutMS
 	}

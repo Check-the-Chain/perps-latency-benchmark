@@ -19,15 +19,19 @@ type runOptions struct {
 	configPath string
 	envFiles   []string
 
-	venue         string
-	scenario      string
-	iterations    int
-	warmups       int
-	batchSize     int
-	ratePerSecond float64
-	maxInFlight   int
-	latencyMode   string
-	stopOnError   bool
+	venue            string
+	scenario         string
+	iterations       int
+	warmups          int
+	batchSize        int
+	ratePerSecond    float64
+	maxInFlight      int
+	latencyMode      string
+	stopOnError      bool
+	cleanup          bool
+	cleanupMode      string
+	cleanupScope     string
+	cleanupTimeoutMS int
 
 	timeoutMS           int
 	maxIdleConns        int
@@ -71,6 +75,10 @@ func addRunFlags(cmd *cobra.Command, opts *runOptions) {
 	flags.IntVar(&opts.maxInFlight, "max-in-flight", 0, "Maximum open-loop requests in flight.")
 	flags.StringVar(&opts.latencyMode, "latency-mode", "", "Latency metric: total or ttfb.")
 	flags.BoolVar(&opts.stopOnError, "stop-on-error", false, "Stop after the first failed sample.")
+	flags.BoolVar(&opts.cleanup, "cleanup", false, "Cancel benchmark orders outside the measured latency window.")
+	flags.StringVar(&opts.cleanupMode, "cleanup-mode", "", "Cleanup mode: best_effort or strict.")
+	flags.StringVar(&opts.cleanupScope, "cleanup-scope", "", "Cleanup scope: after_sample.")
+	flags.IntVar(&opts.cleanupTimeoutMS, "cleanup-timeout-ms", 0, "Cleanup builder timeout in milliseconds.")
 
 	flags.IntVar(&opts.timeoutMS, "timeout-ms", 0, "HTTP client timeout in milliseconds.")
 	flags.IntVar(&opts.maxIdleConns, "max-idle-conns", 0, "HTTP transport MaxIdleConns.")
@@ -123,6 +131,9 @@ func runBenchmark(ctx context.Context, cmd *cobra.Command, opts *runOptions) err
 		return err
 	}
 	if err := validateLifecycleForRun(venueName, cfg); err != nil {
+		return err
+	}
+	if err := validateCleanupForRun(venueName, cfg); err != nil {
 		return err
 	}
 	if err := checkAccountsForRun(venueName, cfg); err != nil {
@@ -192,6 +203,9 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 			return err
 		}
 		if err := validateLifecycleForRun(venueName, variantCfg); err != nil {
+			return err
+		}
+		if err := validateCleanupForRun(venueName, variantCfg); err != nil {
 			return err
 		}
 		result, err := runWithConfig(ctx, venueName, variantCfg)
@@ -321,6 +335,27 @@ func validateLifecycleForRun(venueName string, cfg fileConfig) error {
 	return nil
 }
 
+func validateCleanupForRun(venueName string, cfg fileConfig) error {
+	cleanupCfg := cfg.Cleanup.toBenchCleanupConfig()
+	if !cleanupCfg.Enabled {
+		return nil
+	}
+	switch cleanupCfg.Mode {
+	case bench.CleanupModeBestEffort, bench.CleanupModeStrict:
+	default:
+		return fmt.Errorf("cleanup.mode must be best_effort or strict")
+	}
+	if cleanupCfg.Scope != bench.CleanupScopeAfterSample {
+		return fmt.Errorf("cleanup.scope must be after_sample")
+	}
+	switch venueName {
+	case "hyperliquid", "lighter":
+		return nil
+	default:
+		return fmt.Errorf("%s does not have a cleanup adapter wired yet", venueName)
+	}
+}
+
 func checkAccountsForRun(venueName string, cfg fileConfig) error {
 	if venueName == "mock" || venueName == "http" {
 		return nil
@@ -358,10 +393,18 @@ func runWithConfig(ctx context.Context, venueName string, cfg fileConfig) (bench
 		return bench.Result{}, err
 	}
 
+	benchConfig := cfg.Benchmark.toBenchConfig()
+	benchConfig.Cleanup = cfg.Cleanup.toBenchCleanupConfig()
+	cleanupAdapter, err := buildCleanupAdapter(venueName, cfg, client)
+	if err != nil {
+		return bench.Result{}, err
+	}
+
 	return bench.Runner{
-		Config: cfg.Benchmark.toBenchConfig(),
-		Client: client,
-		Venue:  venue,
+		Config:  benchConfig,
+		Client:  client,
+		Venue:   venue,
+		Cleanup: cleanupAdapter,
 	}.Run(ctx)
 }
 

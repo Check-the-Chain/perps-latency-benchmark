@@ -28,6 +28,7 @@ def main() -> int:
             order_wires_to_order_action,
             sign_l1_action,
         )
+        from hyperliquid.utils.types import Cloid
     except ImportError as exc:
         raise SystemExit(
             "missing Hyperliquid SDK dependencies; run with "
@@ -37,7 +38,15 @@ def main() -> int:
     for line in sys.stdin:
         if not line.strip():
             continue
-        built = build(json.loads(line), Account, MAINNET_API_URL, order_request_to_order_wire, order_wires_to_order_action, sign_l1_action)
+        built = build(
+            json.loads(line),
+            Account,
+            MAINNET_API_URL,
+            order_request_to_order_wire,
+            order_wires_to_order_action,
+            sign_l1_action,
+            Cloid,
+        )
         print(compact_json(built), flush=True)
     return 0
 
@@ -49,6 +58,7 @@ def build(
     order_request_to_order_wire: Any,
     order_wires_to_order_action: Any,
     sign_l1_action: Any,
+    Cloid: Any,
 ) -> dict[str, Any]:
     params = dict(req.get("params") or {})
     wallet = Account.from_key(env_or_param(params, "secret_key", "HYPERLIQUID_SECRET_KEY"))
@@ -57,12 +67,14 @@ def build(
     batch_size = int(req.get("batch_size") or 1)
     orders = params.get("orders")
     if orders is None:
-        orders = [order_from_params(params, offset) for offset in range(batch_size if scenario == "batch" else 1)]
+        orders = [order_from_params(params, offset, Cloid) for offset in range(batch_size if scenario == "batch" else 1)]
     if scenario != "batch":
         orders = orders[:1]
 
     order_wires = []
+    cleanup_orders = []
     for order in orders:
+        cleanup_orders.append(cleanup_ref(order))
         asset = int(order.pop("asset"))
         order_wires.append(order_request_to_order_wire(order, asset))
 
@@ -89,7 +101,7 @@ def build(
     built: dict[str, Any] = {
         "headers": {"Content-Type": "application/json"},
         "body": compact_json(payload),
-        "metadata": {"builder": "hyperliquid-python-sdk", "nonce": nonce},
+        "metadata": {"builder": "hyperliquid-python-sdk", "nonce": nonce, "cleanup_orders": cleanup_orders},
     }
     if req.get("transport") == "websocket":
         built["ws_body"] = compact_json(
@@ -102,13 +114,11 @@ def build(
     return built
 
 
-def order_from_params(params: dict[str, Any], offset: int) -> dict[str, Any]:
+def order_from_params(params: dict[str, Any], offset: int, Cloid: Any) -> dict[str, Any]:
     asset = params.get("asset")
     if asset is None:
         raise SystemExit("Hyperliquid builder requires params.asset for symbol-to-asset mapping")
-    cloid = params.get("cloid")
-    if cloid and offset:
-        cloid = f"{cloid}{offset}"
+    cloid = order_cloid(params, offset, Cloid)
     order: dict[str, Any] = {
         "coin": params.get("symbol", "BTC"),
         "is_buy": str(params.get("side", "buy")).lower() == "buy",
@@ -121,6 +131,27 @@ def order_from_params(params: dict[str, Any], offset: int) -> dict[str, Any]:
     if cloid:
         order["cloid"] = cloid
     return order
+
+
+def order_cloid(params: dict[str, Any], offset: int, Cloid: Any) -> Any:
+    if params.get("cloid_base") is not None:
+        return Cloid.from_int((int(str(params["cloid_base"]), 0) + offset) & ((1 << 128) - 1))
+    if params.get("cloid") is not None:
+        raw = str(params["cloid"])
+        if offset:
+            return Cloid.from_int((int(raw, 16) + offset) & ((1 << 128) - 1))
+        return Cloid.from_str(raw)
+    return Cloid.from_int(((time.time_ns() << 16) + offset) & ((1 << 128) - 1))
+
+
+def cleanup_ref(order: dict[str, Any]) -> dict[str, Any]:
+    cloid = order.get("cloid")
+    return {
+        "venue": "hyperliquid",
+        "asset": int(order["asset"]),
+        "symbol": order["coin"],
+        "cloid": cloid.to_raw() if hasattr(cloid, "to_raw") else str(cloid),
+    }
 
 
 def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:

@@ -298,6 +298,18 @@ func TestValidateRunConfigUsesVenueBuilderDefaults(t *testing.T) {
 	}
 }
 
+func TestValidateCleanupRejectsUnsupportedVenue(t *testing.T) {
+	cfg := fileConfig{Cleanup: cleanupConfig{Enabled: true, Mode: "best_effort", Scope: "after_sample"}}
+
+	err := validateCleanupForRun("edgex", cfg)
+	if err == nil {
+		t.Fatal("expected unsupported cleanup error")
+	}
+	if !strings.Contains(err.Error(), "cleanup adapter") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestEnvFilePrecedence(t *testing.T) {
 	dir := t.TempDir()
 	shared := filepath.Join(dir, ".env.local")
