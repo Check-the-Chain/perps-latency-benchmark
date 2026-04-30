@@ -161,6 +161,13 @@ func runBenchmark(ctx context.Context, cmd *cobra.Command, opts *runOptions) err
 	return nil
 }
 
+func normalizedVenue(name string, fallback string) string {
+	if name == "" {
+		name = fallback
+	}
+	return strings.ToLower(name)
+}
+
 func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOptions) error {
 	cfg, err := loadFileConfig(opts.configPath)
 	if err != nil {

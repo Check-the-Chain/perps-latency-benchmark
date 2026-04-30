@@ -3,6 +3,7 @@
 !.env.example
 !.env.*.example
 results/
+data/
 *.local.json
 __pycache__/
 *.py[cod]

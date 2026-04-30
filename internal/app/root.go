@@ -30,8 +30,10 @@ func NewRootCommand() *cobra.Command {
 	compare.Flags().StringVar(&compareOpts.transports, "transports", "https,websocket", "Comma-separated transports to compare.")
 
 	root.AddCommand(run)
+	root.AddCommand(newRunContinuousCommand())
 	root.AddCommand(compare)
 	root.AddCommand(newCompareResultsCommand())
+	root.AddCommand(newServeCommand())
 	root.AddCommand(newAccountsCommand())
 	return root
 }

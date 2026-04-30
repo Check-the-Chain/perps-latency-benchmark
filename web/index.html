@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Perps Latency Benchmark</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #172026;
+        background: #f6f8fb;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 28px 20px 40px;
+      }
+      header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.1;
+        font-weight: 700;
+      }
+      .meta {
+        color: #5f6b76;
+        font-size: 14px;
+      }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      select,
+      button {
+        height: 34px;
+        border: 1px solid #c9d2dc;
+        background: #fff;
+        border-radius: 6px;
+        padding: 0 10px;
+        color: #172026;
+      }
+      button {
+        cursor: pointer;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        border: 1px solid #d8e0e8;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e6ecf2;
+        text-align: right;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+      th {
+        color: #5f6b76;
+        font-weight: 600;
+        background: #fbfcfe;
+      }
+      th:first-child,
+      th:nth-child(2),
+      td:first-child,
+      td:nth-child(2) {
+        text-align: left;
+      }
+      .ok {
+        color: #087443;
+        font-weight: 650;
+      }
+      .fail {
+        color: #b42318;
+        font-weight: 650;
+      }
+      .empty {
+        padding: 34px 0;
+        text-align: center;
+        color: #5f6b76;
+      }
+      @media (max-width: 760px) {
+        header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .table-wrap {
+          overflow-x: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Perps Latency Benchmark</h1>
+          <div class="meta" id="updated">Waiting for data</div>
+        </div>
+        <div class="toolbar">
+          <select id="window">
+            <option value="5m">5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="6h">6h</option>
+            <option value="24h">24h</option>
+          </select>
+          <button id="refresh" type="button">Refresh</button>
+        </div>
+      </header>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Venue</th>
+              <th>Transport</th>
+              <th>Count</th>
+              <th>OK</th>
+              <th>Failed</th>
+              <th>Mean</th>
+              <th>p50</th>
+              <th>p95</th>
+              <th>p99</th>
+              <th>Cleanup</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr><td class="empty" colspan="10">No samples loaded</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+    <script>
+      const apiBase = new URLSearchParams(location.search).get("api") || "";
+      const rows = document.querySelector("#rows");
+      const updated = document.querySelector("#updated");
+      const windowSelect = document.querySelector("#window");
+      const refresh = document.querySelector("#refresh");
+
+      function ms(value) {
+        return Number(value || 0).toFixed(1) + " ms";
+      }
+
+      async function load() {
+        const windowValue = windowSelect.value;
+        const response = await fetch(`${apiBase}/api/latest?window=${encodeURIComponent(windowValue)}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        updated.textContent = `Updated ${new Date(data.updated_at).toLocaleString()} · window ${data.window}`;
+        rows.innerHTML = "";
+        if (!data.summaries || data.summaries.length === 0) {
+          rows.innerHTML = '<tr><td class="empty" colspan="10">No samples in this window</td></tr>';
+          return;
+        }
+        for (const row of data.summaries) {
+          const tr = document.createElement("tr");
+          const failedClass = row.failed > 0 ? "fail" : "ok";
+          tr.innerHTML = `
+            <td>${row.venue}</td>
+            <td>${row.transport}</td>
+            <td>${row.count}</td>
+            <td class="ok">${row.ok}</td>
+            <td class="${failedClass}">${row.failed}</td>
+            <td>${ms(row.mean_ms)}</td>
+            <td>${ms(row.p50_ms)}</td>
+            <td>${ms(row.p95_ms)}</td>
+            <td>${ms(row.p99_ms)}</td>
+            <td>${row.cleanup_ok}/${row.cleanup_ok + row.cleanup_failed}</td>
+          `;
+          rows.appendChild(tr);
+        }
+      }
+
+      refresh.addEventListener("click", () => load().catch(showError));
+      windowSelect.addEventListener("change", () => load().catch(showError));
+      function showError(error) {
+        updated.textContent = error.message;
+      }
+      load().catch(showError);
+      setInterval(() => load().catch(showError), 15000);
+    </script>
+  </body>
+</html>

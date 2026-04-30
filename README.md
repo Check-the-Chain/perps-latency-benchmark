@@ -125,6 +125,35 @@ go run ./cmd/perps-bench compare-transports \
 
 Unsupported transport/scenario combinations fail before the run starts.
 
+## Continuous Dashboard
+
+Run a benchmark continuously into a local SQLite store:
+
+```bash
+go run ./cmd/perps-bench run-continuous \
+  --config examples/lighter-builder.json \
+  --env-file .env.wallets.local \
+  --rate 0.2 \
+  --chunk-iterations 12 \
+  --cleanup-mode strict \
+  --confirm-live \
+  --store data/bench.db
+```
+
+Serve the read-only API and static dashboard:
+
+```bash
+go run ./cmd/perps-bench serve \
+  --store data/bench.db \
+  --listen 127.0.0.1:8080
+```
+
+Expose it from a server without opening inbound ports:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8080
+```
+
 ## Safety
 
 Live runs require `--confirm-live`.
