@@ -56,7 +56,7 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
             if not orders:
                 return cleanup_result(False, True, "no stale lighter benchmark orders", metadata={"position": position})
         elif phase == "after_run":
-            remaining = await open_cleanup_orders(client, result_orders(dict(params.get("result") or {})), builder_params, api_key_index, account_index)
+            remaining = await wait_no_open_cleanup_orders(client, result_orders(dict(params.get("result") or {})), builder_params, api_key_index, account_index)
             before_position = dict(params.get("run_metadata") or {}).get("position")
             after_position = await position_snapshot(client, account_index)
             problems = []
@@ -161,6 +161,18 @@ async def wait_open_cleanup_orders(client: Any, refs: list[dict[str, Any]], para
             return remaining
         await asyncio.sleep(interval)
     return []
+
+
+async def wait_no_open_cleanup_orders(client: Any, refs: list[dict[str, Any]], params: dict[str, Any], api_key_index: int, account_index: int) -> list[dict[str, Any]]:
+    attempts = max(1, int(params.get("reconciliation_poll_attempts", 5)))
+    interval = max(0, int(params.get("reconciliation_poll_interval_ms", 250))) / 1000
+    remaining = []
+    for attempt in range(attempts):
+        remaining = await open_cleanup_orders(client, refs, params, api_key_index, account_index)
+        if not remaining or attempt == attempts - 1:
+            return remaining
+        await asyncio.sleep(interval)
+    return remaining
 
 
 def orders_list(response: Any) -> list[Any]:
