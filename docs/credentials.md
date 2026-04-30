@@ -102,6 +102,11 @@ and [API key docs](https://apidocs.lighter.xyz/docs/api-keys). `LIGHTER_L1_PRIVA
 `LIGHTER_ACCOUNT_INDEX`, and `LIGHTER_API_KEY_INDEX` are required by benchmark
 order builders.
 
+The generated `LIGHTER_PRIVATE_KEY` is not automatically active. Register it as
+a Lighter API key on the target account, or replace it with API key material
+created in Lighter. The account index and API key index must match that active
+key.
+
 GRVT:
 
 ```bash

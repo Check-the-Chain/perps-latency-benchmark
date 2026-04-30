@@ -33,12 +33,12 @@ Complete the venue-side setup:
   Hyperliquid account or agent wallet, then confirm `symbol`, `asset`, `size`,
   and `price` in `examples/hyperliquid-builder.json`.
 - Lighter: use the printed Ethereum address for account creation/deposits,
-  register or create the Lighter API key, fill `LIGHTER_ACCOUNT_INDEX` and
+  register the generated `LIGHTER_PRIVATE_KEY` as a Lighter API key or replace
+  it with an API key created in Lighter, fill `LIGHTER_ACCOUNT_INDEX` and
   `LIGHTER_API_KEY_INDEX` in `.env.wallets.local`, then confirm `market_index`,
   `base_amount`, and `price` in `examples/lighter-builder.json`.
 
-If Lighter gives you API key material during setup, replace
-`LIGHTER_PRIVATE_KEY` in `.env.wallets.local` with the active key.
+`LIGHTER_PRIVATE_KEY` only works after it is associated with the Lighter account.
 
 Verify that required local environment is present:
 
