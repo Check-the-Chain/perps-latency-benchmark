@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Build signed Hyperliquid order payloads for perps-bench.
+
+Run through the command builder, for example:
+
+  uv run --with hyperliquid-python-sdk --with eth-account \
+    python internal/venues/hyperliquid/build_payload.py
+
+The script reads the perps-bench builder request JSON from stdin and writes a
+payload.Built JSON object to stdout. It does not send any network request.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from typing import Any
+
+
+def main() -> int:
+    try:
+        from eth_account import Account
+        from hyperliquid.utils.constants import MAINNET_API_URL
+        from hyperliquid.utils.signing import (
+            order_request_to_order_wire,
+            order_wires_to_order_action,
+            sign_l1_action,
+        )
+    except ImportError as exc:
+        raise SystemExit(
+            "missing Hyperliquid SDK dependencies; run with "
+            "`uv run --with hyperliquid-python-sdk --with eth-account python ...`"
+        ) from exc
+
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        built = build(json.loads(line), Account, MAINNET_API_URL, order_request_to_order_wire, order_wires_to_order_action, sign_l1_action)
+        print(compact_json(built), flush=True)
+    return 0
+
+
+def build(
+    req: dict[str, Any],
+    Account: Any,
+    MAINNET_API_URL: str,
+    order_request_to_order_wire: Any,
+    order_wires_to_order_action: Any,
+    sign_l1_action: Any,
+) -> dict[str, Any]:
+    params = dict(req.get("params") or {})
+    wallet = Account.from_key(env_or_param(params, "secret_key", "HYPERLIQUID_SECRET_KEY"))
+
+    scenario = req["scenario"]
+    batch_size = int(req.get("batch_size") or 1)
+    orders = params.get("orders")
+    if orders is None:
+        orders = [order_from_params(params, offset) for offset in range(batch_size if scenario == "batch" else 1)]
+    if scenario != "batch":
+        orders = orders[:1]
+
+    order_wires = []
+    for order in orders:
+        asset = int(order.pop("asset"))
+        order_wires.append(order_request_to_order_wire(order, asset))
+
+    nonce = int(params.get("nonce_base") or (time.time_ns() // 1_000_000)) + int(req["iteration"])
+    builder = params.get("builder")
+    grouping = params.get("grouping", "na")
+    action = order_wires_to_order_action(order_wires, builder, grouping)
+    signature = sign_l1_action(
+        wallet,
+        action,
+        params.get("vault_address"),
+        nonce,
+        params.get("expires_after"),
+        params.get("base_url", MAINNET_API_URL) == MAINNET_API_URL,
+    )
+    payload = {
+        "action": action,
+        "nonce": nonce,
+        "signature": signature,
+        "vaultAddress": params.get("vault_address"),
+        "expiresAfter": params.get("expires_after"),
+    }
+
+    built: dict[str, Any] = {
+        "headers": {"Content-Type": "application/json"},
+        "body": compact_json(payload),
+        "metadata": {"builder": "hyperliquid-python-sdk", "nonce": nonce},
+    }
+    if req.get("transport") == "websocket":
+        built["ws_body"] = compact_json(
+            {
+                "method": "post",
+                "id": params.get("request_id", nonce),
+                "request": {"type": "action", "payload": payload},
+            }
+        )
+    return built
+
+
+def order_from_params(params: dict[str, Any], offset: int) -> dict[str, Any]:
+    asset = params.get("asset")
+    if asset is None:
+        raise SystemExit("Hyperliquid builder requires params.asset for symbol-to-asset mapping")
+    cloid = params.get("cloid")
+    if cloid and offset:
+        cloid = f"{cloid}{offset}"
+    order: dict[str, Any] = {
+        "coin": params.get("symbol", "ETH"),
+        "is_buy": str(params.get("side", "buy")).lower() == "buy",
+        "sz": float(params["size"]),
+        "limit_px": float(params["price"]),
+        "order_type": {"limit": {"tif": params.get("tif", "Alo")}},
+        "reduce_only": bool(params.get("reduce_only", False)),
+        "asset": asset,
+    }
+    if cloid:
+        order["cloid"] = cloid
+    return order
+
+
+def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:
+    value = params.get(key) or os.getenv(env_key)
+    if not value:
+        raise SystemExit(f"missing {key}; set params.{key} or {env_key}")
+    return str(value)
+
+
+def compact_json(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=False)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

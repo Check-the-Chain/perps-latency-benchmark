@@ -1,0 +1,52 @@
+{
+  "venue": "grvt",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 3,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "grvt-pysdk",
+        "--with",
+        "eth-account",
+        "python",
+        "internal/venues/grvt/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "env": "prod",
+        "instrument": "BTC_USDT_Perp",
+        "size": "0.001",
+        "price": "50000",
+        "side": "buy",
+        "post_only": true,
+        "instruments": {
+          "BTC_USDT_Perp": {
+            "base_decimals": 9,
+            "instrument_hash": "0x0"
+          }
+        }
+      }
+    }
+  }
+}

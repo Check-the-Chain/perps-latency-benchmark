@@ -1,0 +1,58 @@
+{
+  "venue": "mock",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 5,
+    "warmups": 1,
+    "batch_size": 3,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "mock": {
+    "latency_ms": 2,
+    "status": 200,
+    "body": "{\"ok\":true}"
+  },
+  "request": {
+    "transport": "http",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body_file": "examples/signed-single.json",
+    "batch_body_file": "examples/signed-batch.json",
+    "ws_body_file": "examples/ws-signed-single.json",
+    "ws_batch_body_file": "examples/ws-signed-batch.json"
+  },
+  "venues": {
+    "hyperliquid": {
+      "base_url": "https://api.hyperliquid.xyz",
+      "ws_url": "wss://api.hyperliquid.xyz/ws"
+    },
+    "aster": {
+      "base_url": "https://fapi.asterdex.com"
+    },
+    "edgex": {
+      "base_url": "https://pro.edgex.exchange"
+    },
+    "lighter": {
+      "base_url": "https://mainnet.zklighter.elliot.ai",
+      "ws_url": "wss://mainnet.zklighter.elliot.ai/stream"
+    },
+    "variational_omni": {},
+    "grvt": {
+      "base_url": "https://trades.grvt.io",
+      "ws_url": "wss://trades.grvt.io/ws/full"
+    },
+    "extended": {
+      "base_url": "https://api.starknet.extended.exchange"
+    }
+  }
+}

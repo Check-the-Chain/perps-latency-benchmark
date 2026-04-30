@@ -1,0 +1,53 @@
+{
+  "venue": "extended",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 1,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "x10-python-trading-starknet",
+        "python",
+        "internal/venues/extended/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "env": "mainnet",
+        "market": "BTC-USD",
+        "side": "buy",
+        "size": "0.001",
+        "price": "50000",
+        "time_in_force": "GTT",
+        "post_only": true,
+        "fee": "0.0002",
+        "l2_config": {
+          "type": "STARKX",
+          "synthetic_id": "0x425443",
+          "synthetic_resolution": 100000000,
+          "collateral_id": "0x1",
+          "collateral_resolution": 1000000
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "venue": "edgex",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 3,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "edgex-python-sdk",
+        "--with",
+        "requests",
+        "python",
+        "internal/venues/edgex/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "contract_id": "10000001",
+        "price": "50000",
+        "size": "0.001",
+        "side": "BUY",
+        "type": "LIMIT",
+        "time_in_force": "POST_ONLY",
+        "metadata_note": "Replace placeholder metadata with current edgeX metadata before live use.",
+        "metadata": {
+          "contractList": [
+            {
+              "contractId": "10000001",
+              "quoteCoinId": "1000",
+              "starkExResolution": "0x1",
+              "starkExSyntheticAssetId": "0x1",
+              "defaultTakerFeeRate": "0.0005"
+            }
+          ],
+          "coinList": [
+            {
+              "coinId": "1000",
+              "starkExResolution": "0x1",
+              "starkExAssetId": "0x1"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

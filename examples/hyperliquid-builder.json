@@ -1,0 +1,46 @@
+{
+  "venue": "hyperliquid",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 3,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "hyperliquid-python-sdk",
+        "--with",
+        "eth-account",
+        "python",
+        "internal/venues/hyperliquid/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "symbol": "ETH",
+        "asset": 4,
+        "side": "buy",
+        "size": "0.001",
+        "price": "3000",
+        "tif": "Alo"
+      }
+    }
+  }
+}
