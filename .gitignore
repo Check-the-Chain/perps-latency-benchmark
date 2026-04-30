@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 !.env.*.example
+.dev.vars
 results/
 data/
 *.local.json
@@ -11,4 +12,9 @@ __pycache__/
 coverage.out
 bin/
 dist/
+node_modules/
+.tanstack/
+.wrangler/
+*.tsbuildinfo
+.playwright-mcp/
 tmp

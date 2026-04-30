@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "perps-latency-dashboard",
+  "compatibility_date": "2026-04-30",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env",
+  ],
+  "main": "@tanstack/react-start/server-entry",
+  "account_id": "b7c467d8a66223357f5492d16bf40b35",
+  "routes": [
+    {
+      "pattern": "latency.perps.trading",
+      "custom_domain": true,
+    },
+  ],
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+  },
+  "secrets": {
+    "required": [
+      "PERPS_BENCH_API_PASSWORD",
+    ],
+  },
+  "vars": {
+    "PERPS_BENCH_API_URL": "http://ec2-18-183-225-52.ap-northeast-1.compute.amazonaws.com:8080",
+    "PERPS_BENCH_API_USER": "bench",
+    "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
+  },
+}

@@ -1,0 +1,47 @@
+{
+  "name": "perps-latency-benchmark-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.dev.vars ./node_modules/vite/bin/vite.js dev --port 3000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json --keep-vars",
+    "deploy:dry-run": "npm run build && wrangler deploy --config dist/server/wrangler.json --dry-run --keep-vars",
+    "cf:typegen": "wrangler types --env-file /dev/null --strict-vars false",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/vite-plugin": "^1.25.0",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
+    "@tailwindcss/vite": "^4.2.1",
+    "@tanstack/react-query": "^5.96.2",
+    "@tanstack/react-router": "^1.167.4",
+    "@tanstack/react-router-ssr-query": "^1.166.9",
+    "@tanstack/react-start": "^1.166.15",
+    "@tanstack/router-plugin": "^1.166.13",
+    "@visx/axis": "^3.12.0",
+    "@visx/grid": "^3.12.0",
+    "@visx/group": "^3.12.0",
+    "@visx/responsive": "^3.12.0",
+    "@visx/scale": "^3.12.0",
+    "@visx/shape": "^3.12.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.1",
+    "vite-tsconfig-paths": "^5.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "wrangler": "^4.65.0"
+  }
+}

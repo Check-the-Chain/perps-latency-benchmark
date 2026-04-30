@@ -166,6 +166,44 @@ curl -u "bench:$PERPS_BENCH_API_PASSWORD" \
   "http://YOUR_SERVER:8080/api/latest?window=5m"
 ```
 
+## Dashboard
+
+Start the read-only API:
+
+```bash
+go run ./cmd/perps-bench serve \
+  --store data/bench.db \
+  --listen 127.0.0.1:8080
+```
+
+Start the dashboard:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the URL printed by Vite, normally `http://127.0.0.1:3000`. The dashboard
+keeps API credentials on the server side; they are not exposed to the browser.
+
+For local development against an authenticated API, create `frontend/.dev.vars`:
+
+```bash
+PERPS_BENCH_API_URL=http://ec2-18-183-225-52.ap-northeast-1.compute.amazonaws.com:8080
+PERPS_BENCH_API_USER=bench
+PERPS_BENCH_API_PASSWORD=your-password
+```
+
+Deploy the dashboard:
+
+```bash
+cd frontend
+npm run build
+npx wrangler secret put PERPS_BENCH_API_PASSWORD --config wrangler.jsonc
+npm run deploy
+```
+
 ## Safety
 
 Live runs require `--confirm-live`.

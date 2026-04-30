@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme inline {
+  --font-sans: "Space Grotesk Variable", sans-serif;
+  --font-mono: "JetBrains Mono Variable", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-warning: var(--warning);
+}
+
+:root {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.2 0.015 255);
+  --muted: oklch(0.96 0.002 255);
+  --muted-foreground: oklch(0.48 0.015 253);
+  --surface-1: oklch(1 0 0);
+  --surface-2: oklch(0.96 0.003 255);
+  --border: oklch(0.9 0.004 255);
+  --primary: oklch(0.52 0.17 215);
+  --primary-foreground: oklch(0.99 0 0);
+  --profit: oklch(0.5 0.14 160);
+  --loss: oklch(0.55 0.2 25);
+  --warning: oklch(0.62 0.15 75);
+}
+
+@layer base {
+  html {
+    max-width: 100%;
+    overflow-x: clip;
+    background: var(--background);
+    font-family: var(--font-mono);
+    color: var(--foreground);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-height: 100svh;
+    margin: 0;
+    background: var(--background);
+  }
+
+  button,
+  select {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .grid-mesh {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        oklch(0.88 0.004 255 / 0.45) 0,
+        oklch(0.88 0.004 255 / 0.45) 1px,
+        transparent 1px,
+        transparent 24px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        oklch(0.88 0.004 255 / 0.45) 0,
+        oklch(0.88 0.004 255 / 0.45) 1px,
+        transparent 1px,
+        transparent 24px
+      );
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
