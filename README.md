@@ -125,7 +125,7 @@ go run ./cmd/perps-bench compare-transports \
 
 Unsupported transport/scenario combinations fail before the run starts.
 
-## Continuous Dashboard
+## Continuous API
 
 Run a benchmark continuously into a local SQLite store:
 
@@ -140,7 +140,7 @@ go run ./cmd/perps-bench run-continuous \
   --store data/bench.db
 ```
 
-Serve the read-only API and static dashboard:
+Serve the read-only API:
 
 ```bash
 go run ./cmd/perps-bench serve \

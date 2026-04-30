@@ -18,7 +18,6 @@ import (
 type serveOptions struct {
 	storePath  string
 	listen     string
-	staticDir  string
 	corsOrigin string
 }
 
@@ -48,7 +47,6 @@ func newServeCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.storePath, "store", "data/bench.db", "SQLite result store path.")
 	cmd.Flags().StringVar(&opts.listen, "listen", "127.0.0.1:8080", "HTTP listen address.")
-	cmd.Flags().StringVar(&opts.staticDir, "static", "web", "Static frontend directory. Set empty to disable.")
 	cmd.Flags().StringVar(&opts.corsOrigin, "cors-origin", "*", "CORS Access-Control-Allow-Origin for API responses.")
 	return cmd
 }
@@ -88,9 +86,6 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 		}
 		writeJSON(w, map[string]any{"samples": samples})
 	}))
-	if opts.staticDir != "" {
-		mux.Handle("/", http.FileServer(http.Dir(opts.staticDir)))
-	}
 
 	server := &http.Server{Addr: opts.listen, Handler: mux}
 	go func() {
