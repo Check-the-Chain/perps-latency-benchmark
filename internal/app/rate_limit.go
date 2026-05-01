@@ -12,7 +12,8 @@ import (
 )
 
 type rateLimitState struct {
-	reserved int
+	reserved            int
+	reserveBlockedUntil time.Time
 }
 
 type hyperliquidRateStatus struct {
@@ -36,10 +37,14 @@ func (s *rateLimitState) preflight(ctx context.Context, venueName string, cfg fi
 		minRemaining = 100
 	}
 	if remaining >= minRemaining {
+		s.reserveBlockedUntil = time.Time{}
 		return nil
 	}
 	if !cfg.RateLimit.ReserveWhenBelow {
 		return fmt.Errorf("hyperliquid request capacity below minimum: remaining=%d min=%d used=%d cap=%d surplus=%d", remaining, minRemaining, status.NRequestsUsed, status.NRequestsCap, status.NRequestsSurplus)
+	}
+	if time.Now().Before(s.reserveBlockedUntil) {
+		return fmt.Errorf("hyperliquid request capacity below minimum and reserve is backing off until %s: remaining=%d min=%d", s.reserveBlockedUntil.UTC().Format(time.RFC3339), remaining, minRemaining)
 	}
 
 	target := cfg.RateLimit.ReserveTarget
@@ -58,8 +63,10 @@ func (s *rateLimitState) preflight(ctx context.Context, venueName string, cfg fi
 		return fmt.Errorf("hyperliquid auto reserve would exceed max_reserve_weight: requested=%d already_reserved=%d max=%d", weight, s.reserved, maxWeight)
 	}
 	if _, err := hyperliquidRateLimitCommand(ctx, cfg, "reserve", strconv.Itoa(weight)); err != nil {
+		s.reserveBlockedUntil = time.Now().Add(time.Hour)
 		return err
 	}
+	s.reserveBlockedUntil = time.Time{}
 	s.reserved += weight
 	status, err = hyperliquidRateLimitCommand(ctx, cfg, "status")
 	if err != nil {
