@@ -99,7 +99,11 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 			chunkCfg.Benchmark.Warmups = 0
 		}
 		if err := rateLimits.preflight(ctx, venueName, chunkCfg); err != nil {
-			return err
+			fmt.Fprintf(cmd.ErrOrStderr(), "rate limit preflight: %v\n", err)
+			if err := sleepContinuousChunk(ctx, chunkStarted, cfg.Benchmark.RatePerSecond, chunkCfg.Benchmark.Warmups+chunkCfg.Benchmark.Iterations); err != nil {
+				return nil
+			}
+			continue
 		}
 		result, err := runWithConfig(ctx, venueName, chunkCfg)
 		if err != nil {
