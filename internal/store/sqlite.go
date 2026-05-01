@@ -48,12 +48,10 @@ func OpenSQLite(path string) (*SQLite, error) {
 }
 
 func sqliteDSN(path string) string {
-	u := url.URL{Scheme: "file", Path: path}
-	q := u.Query()
+	q := url.Values{}
 	q.Add("_pragma", "busy_timeout(10000)")
 	q.Add("_pragma", "journal_mode(WAL)")
-	u.RawQuery = q.Encode()
-	return u.String()
+	return path + "?" + q.Encode()
 }
 
 func (s *SQLite) Close() error {

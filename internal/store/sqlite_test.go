@@ -138,3 +138,15 @@ func TestSQLiteDSNIncludesConnectionPragmas(t *testing.T) {
 		t.Fatalf("busy_timeout = %d, want 10000", timeout)
 	}
 }
+
+func TestSQLiteOpensRelativePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	db, err := OpenSQLite(filepath.Join("data", "bench.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
