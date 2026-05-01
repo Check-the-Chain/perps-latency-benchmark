@@ -2,6 +2,7 @@ import { WINDOW_OPTIONS, type WindowOption } from "@/api/bench"
 
 export interface DashboardFilters {
   scenario: string
+  orderType: string
   transport: string
   venue: string
   window: WindowOption
@@ -10,12 +11,14 @@ export interface DashboardFilters {
 export function DashboardFilterBar({
   filters,
   scenarios,
+  orderTypes,
   transports,
   venues,
   onChange,
 }: {
   filters: DashboardFilters
   scenarios: Array<string>
+  orderTypes: Array<string>
   transports: Array<string>
   venues: Array<string>
   onChange: (filters: DashboardFilters) => void
@@ -47,6 +50,12 @@ export function DashboardFilterBar({
         value={filters.scenario}
         options={withAll(scenarios)}
         onChange={(scenario) => onChange({ ...filters, scenario })}
+      />
+      <FilterSelect
+        label="Order"
+        value={filters.orderType}
+        options={withAll(orderTypes)}
+        onChange={(orderType) => onChange({ ...filters, orderType })}
       />
     </div>
   )

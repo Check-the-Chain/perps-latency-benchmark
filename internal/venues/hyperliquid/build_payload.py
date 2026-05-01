@@ -107,7 +107,14 @@ def build(
     built: dict[str, Any] = {
         "headers": {"Content-Type": "application/json"},
         "body": compact_json(payload),
-        "metadata": {"builder": "hyperliquid-python-sdk", "nonce": nonce, "run_id": params.get("run_id"), "cleanup_orders": cleanup_orders},
+        "metadata": {
+            "builder": "hyperliquid-python-sdk",
+            "nonce": nonce,
+            "run_id": params.get("run_id"),
+            "order_type": benchmark_order_type(params),
+            "time_in_force": order_tif(params),
+            "cleanup_orders": cleanup_orders,
+        },
     }
     if req.get("transport") == "websocket":
         built["ws_body"] = compact_json(
@@ -156,6 +163,18 @@ def order_tif(params: dict[str, Any]) -> str:
     if str(params.get("order_type", "")).lower() == "market":
         return params.get("tif", "Ioc")
     return params.get("tif", "Alo")
+
+
+def benchmark_order_type(params: dict[str, Any]) -> str:
+    order_type = str(params.get("order_type", "")).lower()
+    tif = str(order_tif(params)).lower()
+    if order_type == "market":
+        return "market"
+    if tif == "alo":
+        return "post_only"
+    if tif == "ioc":
+        return "ioc"
+    return tif or order_type or "limit"
 
 
 def order_cloid(params: dict[str, Any], req: dict[str, Any], offset: int, Cloid: Any) -> Any:

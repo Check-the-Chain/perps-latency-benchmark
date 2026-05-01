@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS samples (
   run_id TEXT NOT NULL,
   scenario TEXT NOT NULL,
   transport TEXT NOT NULL,
+  order_type TEXT NOT NULL DEFAULT '',
   latency_mode TEXT NOT NULL,
   iteration INTEGER NOT NULL,
   batch_size INTEGER NOT NULL,
@@ -78,6 +79,13 @@ CREATE TABLE IF NOT EXISTS samples (
 CREATE INDEX IF NOT EXISTS samples_completed_at_idx ON samples(completed_at);
 CREATE INDEX IF NOT EXISTS samples_group_idx ON samples(venue, transport, scenario, latency_mode, completed_at);
 `)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureSamplesOrderType(ctx); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS samples_order_type_idx ON samples(order_type, completed_at);`)
 	return err
 }
 
@@ -91,10 +99,10 @@ func (s *SQLite) WriteSamples(ctx context.Context, records []SampleRecord) error
 	}
 	stmt, err := tx.PrepareContext(ctx, `
 INSERT INTO samples (
-  completed_at, venue, run_id, scenario, transport, latency_mode, iteration,
+  completed_at, venue, run_id, scenario, transport, order_type, latency_mode, iteration,
   batch_size, network_ns, ok, classification, classification_reason,
   cleanup_attempted, cleanup_ok, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 	if err != nil {
 		_ = tx.Rollback()
@@ -113,6 +121,7 @@ INSERT INTO samples (
 			sample.RunID,
 			string(sample.Scenario),
 			sample.Transport,
+			sample.OrderType,
 			string(record.LatencyMode),
 			sample.Iteration,
 			sample.BatchSize,
@@ -136,7 +145,7 @@ func (s *SQLite) RecentSamples(ctx context.Context, since time.Time, limit int) 
 		limit = 1000
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT completed_at, venue, run_id, scenario, transport, iteration, batch_size,
+SELECT completed_at, venue, run_id, scenario, transport, order_type, iteration, batch_size,
        network_ns, ok, classification, classification_reason,
        cleanup_attempted, cleanup_ok, error
 FROM samples
@@ -164,6 +173,7 @@ LIMIT ?
 			&sample.RunID,
 			&scenario,
 			&sample.Transport,
+			&sample.OrderType,
 			&sample.Iteration,
 			&sample.BatchSize,
 			&sample.NetworkNS,
@@ -188,6 +198,33 @@ LIMIT ?
 		samples = append(samples, sample)
 	}
 	return samples, rows.Err()
+}
+
+func (s *SQLite) ensureSamplesOrderType(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(samples)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == "order_type" {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE samples ADD COLUMN order_type TEXT NOT NULL DEFAULT ''`)
+	return err
 }
 
 func (s *SQLite) DeleteBefore(ctx context.Context, before time.Time) error {

@@ -186,7 +186,12 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
       continue
     }
 
-    const key = [sample.venue, sample.transport, sample.scenario].join(":")
+    const key = [
+      sample.venue,
+      sample.transport,
+      sample.scenario,
+      sample.order_type || "unknown",
+    ].join(":")
     const points = grouped.get(key) ?? []
     points.push({ date, ms: nsToMs(sample.network_ns) })
     grouped.set(key, points)

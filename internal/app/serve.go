@@ -32,6 +32,7 @@ type summaryRow struct {
 	Venue       string  `json:"venue"`
 	Transport   string  `json:"transport"`
 	Scenario    string  `json:"scenario"`
+	OrderType   string  `json:"order_type"`
 	Count       int     `json:"count"`
 	OK          int     `json:"ok"`
 	Failed      int     `json:"failed"`
@@ -167,7 +168,7 @@ func basicAuthEqual(gotUser string, gotPassword string, wantUser string, wantPas
 func summarizeGroups(samples []bench.Sample) []summaryRow {
 	groups := make(map[string][]bench.Sample)
 	for _, sample := range samples {
-		key := sample.Venue + "\x00" + sample.Transport + "\x00" + string(sample.Scenario)
+		key := sample.Venue + "\x00" + sample.Transport + "\x00" + string(sample.Scenario) + "\x00" + sample.OrderType
 		groups[key] = append(groups[key], sample)
 	}
 	rows := make([]summaryRow, 0, len(groups))
@@ -181,6 +182,7 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 			Venue:       first.Venue,
 			Transport:   first.Transport,
 			Scenario:    string(first.Scenario),
+			OrderType:   first.OrderType,
 			Count:       summary.Count,
 			OK:          summary.OK,
 			Failed:      summary.Failed,
@@ -203,6 +205,12 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 			return -1
 		}
 		if a.Transport > b.Transport {
+			return 1
+		}
+		if a.OrderType < b.OrderType {
+			return -1
+		}
+		if a.OrderType > b.OrderType {
 			return 1
 		}
 		return 0

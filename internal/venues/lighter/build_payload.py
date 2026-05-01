@@ -64,13 +64,13 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
                 cleanup_orders.append(cleanup_ref)
             body = urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)})
             ws_body = compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}})
-            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "run_id": params.get("run_id"), "cleanup_orders": cleanup_orders}
+            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "run_id": params.get("run_id"), "order_type": benchmark_order_type(client, params), "cleanup_orders": cleanup_orders}
         else:
             order_api_key_index, nonce = order_nonce(client, params, api_key_index, 0)
             tx_type, tx_info, cleanup_ref = sign_order(client, req, params, order_api_key_index, nonce, 0)
             body = urlencode({"tx_type": tx_type, "tx_info": tx_info})
             ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": json.loads(tx_info)}})
-            metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "cleanup_orders": [cleanup_ref]}
+            metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "order_type": benchmark_order_type(client, params), "cleanup_orders": [cleanup_ref]}
     finally:
         await client.close()
 
@@ -115,6 +115,18 @@ def order_expiry(client: Any, params: dict[str, Any]) -> int:
     if order_type == client.ORDER_TYPE_MARKET or time_in_force == client.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL:
         return client.DEFAULT_IOC_EXPIRY
     return client.DEFAULT_28_DAY_ORDER_EXPIRY
+
+
+def benchmark_order_type(client: Any, params: dict[str, Any]) -> str:
+    order_type = int(params.get("order_type", client.ORDER_TYPE_LIMIT))
+    time_in_force = int(params.get("time_in_force", client.ORDER_TIME_IN_FORCE_POST_ONLY))
+    if order_type == client.ORDER_TYPE_MARKET:
+        return "market"
+    if time_in_force == client.ORDER_TIME_IN_FORCE_POST_ONLY:
+        return "post_only"
+    if time_in_force == client.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL:
+        return "ioc"
+    return "limit"
 
 
 def order_index(req: dict[str, Any], params: dict[str, Any], offset: int) -> int:

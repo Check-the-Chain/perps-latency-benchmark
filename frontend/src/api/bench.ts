@@ -15,6 +15,7 @@ export interface SummaryRow {
   venue: string
   transport: string
   scenario: string
+  order_type: string
   count: number
   ok: number
   failed: number
@@ -40,6 +41,7 @@ export interface Sample {
   run_id?: string
   scenario: string
   transport: string
+  order_type?: string
   index: number
   iteration: number
   warmup: boolean

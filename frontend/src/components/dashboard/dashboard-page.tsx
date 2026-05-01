@@ -28,6 +28,7 @@ import {
 
 export function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
+    orderType: "all",
     scenario: "all",
     transport: "all",
     venue: "all",
@@ -74,6 +75,7 @@ export function DashboardPage() {
             <DashboardFilterBar
               filters={filters}
               scenarios={options.scenarios}
+              orderTypes={options.orderTypes}
               transports={options.transports}
               venues={options.venues}
               onChange={setFilters}
@@ -126,7 +128,8 @@ function filterSummaries(rows: Array<SummaryRow>, filters: DashboardFilters) {
     (row) =>
       matches(filters.venue, row.venue) &&
       matches(filters.transport, row.transport) &&
-      matches(filters.scenario, row.scenario)
+      matches(filters.scenario, row.scenario) &&
+      matches(filters.orderType, orderType(row.order_type))
   )
 }
 
@@ -135,7 +138,8 @@ function filterSamples(samples: Array<Sample>, filters: DashboardFilters) {
     (sample) =>
       matches(filters.venue, sample.venue) &&
       matches(filters.transport, sample.transport) &&
-      matches(filters.scenario, sample.scenario)
+      matches(filters.scenario, sample.scenario) &&
+      matches(filters.orderType, orderType(sample.order_type))
   )
 }
 
@@ -144,6 +148,7 @@ function getFilterOptions(rows: Array<SummaryRow>) {
     venues: uniqueSorted(rows.map((row) => row.venue)),
     transports: uniqueSorted(rows.map((row) => row.transport)),
     scenarios: uniqueSorted(rows.map((row) => row.scenario)),
+    orderTypes: uniqueSorted(rows.map((row) => orderType(row.order_type))),
   }
 }
 
@@ -188,5 +193,9 @@ function formatRowLabel(row: SummaryRow | null) {
     return "no matching data"
   }
 
-  return `${row.venue} / ${row.transport} / ${row.scenario}`
+  return `${row.venue} / ${row.transport} / ${row.scenario} / ${orderType(row.order_type)}`
+}
+
+function orderType(value: string | undefined) {
+  return value && value.length > 0 ? value : "unknown"
 }

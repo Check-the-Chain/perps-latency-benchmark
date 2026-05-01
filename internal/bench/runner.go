@@ -211,6 +211,7 @@ func (r Runner) runOnce(ctx context.Context, cfg Config, index int, iteration in
 		RunID:          cfg.RunID,
 		Scenario:       cfg.Scenario,
 		Transport:      transportName(prepared.Transport, netResult.Trace.Transport),
+		OrderType:      orderType(prepared.Metadata),
 		Index:          index,
 		Iteration:      iteration,
 		Warmup:         warmup,
@@ -301,6 +302,18 @@ func transportName(prepared string, measured string) string {
 		return measured
 	}
 	return "http"
+}
+
+func orderType(metadata map[string]any) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	for _, key := range []string{"order_type", "tif", "time_in_force"} {
+		if value, ok := metadata[key]; ok {
+			return fmt.Sprint(value)
+		}
+	}
+	return ""
 }
 
 func appendError(current string, extra string) string {

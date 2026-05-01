@@ -105,6 +105,7 @@ type Sample struct {
 	RunID          string                   `json:"run_id,omitempty"`
 	Scenario       Scenario                 `json:"scenario"`
 	Transport      string                   `json:"transport"`
+	OrderType      string                   `json:"order_type,omitempty"`
 	Index          int                      `json:"index"`
 	Iteration      int                      `json:"iteration"`
 	Warmup         bool                     `json:"warmup"`

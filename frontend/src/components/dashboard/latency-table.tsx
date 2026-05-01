@@ -14,6 +14,7 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
               <HeaderCell>Venue</HeaderCell>
               <HeaderCell>Transport</HeaderCell>
               <HeaderCell>Scenario</HeaderCell>
+              <HeaderCell>Order</HeaderCell>
               <HeaderCell align="right">Measurements</HeaderCell>
               <HeaderCell align="right">OK</HeaderCell>
               <HeaderCell align="right">p50</HeaderCell>
@@ -25,19 +26,20 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-muted-foreground">
+                <td colSpan={10} className="px-3 py-8 text-muted-foreground">
                   No latency data is available for the selected filters.
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr
-                  key={`${row.venue}:${row.transport}:${row.scenario}`}
+                  key={`${row.venue}:${row.transport}:${row.scenario}:${row.order_type}`}
                   className="border-t border-border/70"
                 >
                   <BodyCell className="font-medium">{row.venue}</BodyCell>
                   <BodyCell>{row.transport}</BodyCell>
                   <BodyCell>{row.scenario}</BodyCell>
+                  <BodyCell>{row.order_type || "unknown"}</BodyCell>
                   <BodyCell align="right">{formatCount(row.count)}</BodyCell>
                   <BodyCell align="right">{formatCount(row.ok)}</BodyCell>
                   <BodyCell align="right">{formatLatency(row.p50_ms)}</BodyCell>
