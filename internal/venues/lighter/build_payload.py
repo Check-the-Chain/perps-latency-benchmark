@@ -162,7 +162,13 @@ def next_nonce(client: Any, api_key_index: int, state_file: str) -> int:
         state = json.loads(raw) if raw else {}
         key = str(api_key_index)
         _remote_api_key_index, remote_nonce = client.get_api_key_nonce(api_key_index, -1)
-        nonce = max(int(state.get(key, -1)) + 1, int(remote_nonce))
+        remote_nonce = int(remote_nonce)
+        last_nonce = int(state.get(key, remote_nonce - 1))
+        max_drift = int(os.getenv("LIGHTER_NONCE_MAX_DRIFT", "0"))
+        if max_drift > 0 and remote_nonce <= last_nonce < remote_nonce + max_drift:
+            nonce = last_nonce + 1
+        else:
+            nonce = remote_nonce
         state[key] = nonce
         handle.seek(0)
         handle.truncate()

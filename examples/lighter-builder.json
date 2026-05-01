@@ -43,7 +43,8 @@
         "base_amount": 100,
         "price": 750000,
         "side": "buy",
-        "post_only": true
+        "post_only": true,
+        "cleanup_all_open_orders": true
       }
     }
   }

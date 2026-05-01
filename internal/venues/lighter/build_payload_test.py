@@ -18,10 +18,13 @@ class SignerClientStub:
     last_order = None
 
     def __init__(self, **_kwargs):
+        self.nonce = 123
         pass
 
     def get_api_key_nonce(self, api_key_index, _nonce):
-        return api_key_index, 123
+        nonce = self.nonce
+        self.nonce += 1
+        return api_key_index, nonce
 
     def sign_create_order(self, **kwargs):
         self.__class__.last_order = kwargs

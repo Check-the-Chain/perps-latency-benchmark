@@ -52,11 +52,19 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         if phase == "before_run":
             position = await position_snapshot(client, account_index)
             reconciliation = {"position": position}
-            orders = await open_cleanup_orders(client, planned_orders(params, builder_params), builder_params, api_key_index, account_index)
+            if bool(builder_params.get("cleanup_all_open_orders")):
+                orders = await active_market_orders(client, builder_params, api_key_index, account_index)
+            else:
+                orders = await open_cleanup_orders(client, planned_orders(params, builder_params), builder_params, api_key_index, account_index)
             if not orders:
                 return cleanup_result(False, True, "no stale lighter benchmark orders", metadata={"position": position})
         elif phase == "after_run":
-            remaining = await wait_no_open_cleanup_orders(client, result_orders(dict(params.get("result") or {})), builder_params, api_key_index, account_index)
+            refs = result_orders(dict(params.get("result") or {}))
+            remaining = await wait_no_open_cleanup_orders(client, refs, builder_params, api_key_index, account_index)
+            if bool(builder_params.get("cleanup_all_open_orders")):
+                remaining = await active_market_orders(client, builder_params, api_key_index, account_index)
+                if remaining:
+                    return await cancel_orders(client, remaining, builder_params, api_key_index, reconciliation)
             before_position = dict(params.get("run_metadata") or {}).get("position")
             after_position = await position_snapshot(client, account_index)
             problems = []
@@ -80,14 +88,17 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
                 return cleanup_result(False, True, "no lighter cleanup action needed")
             orders = remaining
 
-        tx_types, tx_infos = [], []
-        for offset, order in enumerate(orders):
-            cancel_api_key_index, nonce = cleanup_nonce(client, builder_params, api_key_index, offset)
-            tx_type, tx_info = sign_cancel(client, order, cancel_api_key_index, nonce)
-            tx_types.append(tx_type)
-            tx_infos.append(tx_info)
+        return await cancel_orders(client, orders, builder_params, api_key_index, reconciliation)
     finally:
         await client.close()
+
+async def cancel_orders(client: Any, orders: list[dict[str, Any]], builder_params: dict[str, Any], api_key_index: int, reconciliation: dict[str, Any]) -> dict[str, Any]:
+    tx_types, tx_infos = [], []
+    for offset, order in enumerate(orders):
+        cancel_api_key_index, nonce = cleanup_nonce(client, builder_params, api_key_index, offset)
+        tx_type, tx_info = sign_cancel(client, order, cancel_api_key_index, nonce)
+        tx_types.append(tx_type)
+        tx_infos.append(tx_info)
 
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     if len(tx_types) == 1:
@@ -102,6 +113,18 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         "body": urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}),
         "metadata": {"cleanup": "cancel_order", "orders": len(tx_types), "reconciliation": reconciliation},
     }
+
+
+async def active_market_orders(client: Any, params: dict[str, Any], api_key_index: int, account_index: int) -> list[dict[str, Any]]:
+    market_index = int(params["market_index"])
+    auth, error = client.create_auth_token_with_expiry(api_key_index=api_key_index)
+    if error:
+        raise SystemExit(f"Lighter auth token failed: {error}")
+    response = await client.order_api.account_active_orders(account_index=account_index, market_id=market_index, auth=auth)
+    return [
+        {"venue": "lighter", "market_index": market_index, "order_index": order_index_value(order)}
+        for order in orders_list(response)
+    ]
 
 
 def planned_orders(params: dict[str, Any], builder_params: dict[str, Any]) -> list[dict[str, Any]]:
