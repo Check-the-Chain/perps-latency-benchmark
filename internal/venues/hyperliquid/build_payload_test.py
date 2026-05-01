@@ -80,6 +80,20 @@ class HyperliquidBuildPayloadTest(unittest.TestCase):
             "post_only",
         )
 
+    def test_dynamic_price_rounds_to_valid_hyperliquid_precision(self):
+        self.assertEqual(
+            build_payload.valid_price(build_payload.Decimal("98765.4321"), True),
+            build_payload.Decimal("98766"),
+        )
+        self.assertEqual(
+            build_payload.valid_price(build_payload.Decimal("98765.4321"), False),
+            build_payload.Decimal("98765"),
+        )
+        self.assertEqual(
+            build_payload.valid_price(build_payload.Decimal("1234.567"), True),
+            build_payload.Decimal("1234.6"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

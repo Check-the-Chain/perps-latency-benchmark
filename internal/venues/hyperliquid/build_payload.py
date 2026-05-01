@@ -17,7 +17,7 @@ import os
 import sys
 import time
 import hashlib
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from typing import Any
 
 
@@ -154,9 +154,17 @@ def dynamic_limit_price(params: dict[str, Any], Info: Any, MAINNET_API_URL: str)
     info = Info(params.get("base_url", MAINNET_API_URL), skip_ws=True)
     mid = Decimal(str(info.all_mids()[symbol]))
     offset = Decimal(str(params.get("price_offset_bps", "0"))) / Decimal("10000")
-    if str(params.get("side", "buy")).lower() == "buy":
-        return mid * (Decimal("1") + offset)
-    return mid * (Decimal("1") - offset)
+    is_buy = str(params.get("side", "buy")).lower() == "buy"
+    if is_buy:
+        return valid_price(mid * (Decimal("1") + offset), True)
+    return valid_price(mid * (Decimal("1") - offset), False)
+
+
+def valid_price(price: Decimal, is_buy: bool) -> Decimal:
+    exponent = price.adjusted() - 4
+    quant = Decimal("1").scaleb(exponent)
+    rounding = ROUND_CEILING if is_buy else ROUND_FLOOR
+    return price.quantize(quant, rounding=rounding).normalize()
 
 
 def order_tif(params: dict[str, Any]) -> str:
