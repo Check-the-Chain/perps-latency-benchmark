@@ -20,7 +20,7 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
               <HeaderCell align="right">OK</HeaderCell>
               <HeaderCell align="right">Confirm p50</HeaderCell>
               <HeaderCell align="right">Confirm p95</HeaderCell>
-              <HeaderCell align="right">Ack p50</HeaderCell>
+              <HeaderCell align="right">Submit p50</HeaderCell>
               <HeaderCell align="right">Errors</HeaderCell>
             </tr>
           </thead>
