@@ -106,6 +106,12 @@ Use Lighter to generate the trading API key, then copy the active key material
 and indexes into `LIGHTER_PRIVATE_KEY`, `LIGHTER_ACCOUNT_INDEX`, and
 `LIGHTER_API_KEY_INDEX`.
 
+Run only one live Lighter benchmark process per `LIGHTER_ACCOUNT_INDEX` /
+`LIGHTER_API_KEY_INDEX` pair. Lighter nonces are tied to the API key, so
+parallel maker/market or HTTPS/WebSocket runners need separate Lighter API keys.
+The CLI enforces this with a local process lock and exits before submitting if
+another runner is already using the same pair.
+
 The starter builders default to small post-only BTC orders. Lighter uses scaled
 integer order units: the current BTC default is `market_index=1`,
 `base_amount=100` and `price=750000`, representing 0.001 BTC at 75,000.0.

@@ -253,6 +253,8 @@ and metadata prepared for another venue.
   with the venue UI.
 - Lighter account errors: confirm `LIGHTER_ACCOUNT_INDEX`,
   `LIGHTER_API_KEY_INDEX`, and `LIGHTER_PRIVATE_KEY` match the active API key.
+- Lighter runner already active: use a separate Lighter API key for each
+  concurrent runner, or stop the existing process using the same key.
 - Config rejected for transport: the venue does not support that
   transport/scenario pair in this tool.
 - Config rejected for risk: keep the order post-only while validating setup.

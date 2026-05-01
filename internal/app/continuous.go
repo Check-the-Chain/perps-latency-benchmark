@@ -67,6 +67,11 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 	if err := checkAccountsForRun(venueName, cfg); err != nil {
 		return err
 	}
+	lock, err := acquireRunLock(venueName, cfg)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 
 	db, err := store.OpenSQLite(opts.storePath)
 	if err != nil {

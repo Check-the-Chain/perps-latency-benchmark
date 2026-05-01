@@ -142,6 +142,12 @@ func runBenchmark(ctx context.Context, cmd *cobra.Command, opts *runOptions) err
 		return err
 	}
 
+	lock, err := acquireRunLock(venueName, cfg)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+
 	result, err := runWithConfig(ctx, venueName, cfg)
 	if err != nil {
 		return err
@@ -210,6 +216,12 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 		Scenario:    benchConfig.Scenario,
 		LatencyMode: benchConfig.LatencyMode,
 	}
+	lock, err := acquireRunLock(venueName, cfg)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+
 	for _, transport := range transports {
 		variantCfg := cloneFileConfig(cfg)
 		setTransport(&variantCfg, venueName, transport)
