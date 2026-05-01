@@ -34,6 +34,7 @@ type Config struct {
 	WSBatchBody     string
 	WSBatchBodyFile string
 	WSReadInitial   bool
+	WSHeartbeat     netlatency.WebSocketHeartbeat
 	Builder         payload.Builder
 	BuilderParams   map[string]any
 	Classifier      lifecycle.Classifier
@@ -143,8 +144,8 @@ func New(cfg Config) (*Venue, error) {
 		builder:       cfg.Builder,
 		builderParams: cfg.BuilderParams,
 		classifier:    cfg.Classifier,
-		wsClient:      newWSClient(transport, cfg.WSURL, headers, cfg.WSReadInitial),
-		wsBatchClient: newWSClient(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers, cfg.WSReadInitial),
+		wsClient:      newWSClientWithHeartbeat(transport, cfg.WSURL, headers, cfg.WSReadInitial, cfg.WSHeartbeat),
+		wsBatchClient: newWSClientWithHeartbeat(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers, cfg.WSReadInitial, cfg.WSHeartbeat),
 	}, nil
 }
 
@@ -295,11 +296,11 @@ func httpTransportLabel(rawURL string) string {
 	return "http"
 }
 
-func newWSClient(transport string, url string, headers http.Header, readInitial bool) *netlatency.WebSocketClient {
+func newWSClientWithHeartbeat(transport string, url string, headers http.Header, readInitial bool, heartbeat netlatency.WebSocketHeartbeat) *netlatency.WebSocketClient {
 	if transport != "websocket" || url == "" {
 		return nil
 	}
-	return netlatency.NewWebSocketClient(url, headers, readInitial)
+	return netlatency.NewWebSocketClientWithHeartbeat(url, headers, readInitial, heartbeat)
 }
 
 func mergeMetadata(primary map[string]any, fallback map[string]any) map[string]any {

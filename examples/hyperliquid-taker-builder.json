@@ -1,0 +1,58 @@
+{
+  "venue": "hyperliquid",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 3,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "stop_on_error": true,
+    "latency_mode": "total"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "allow_fill": true,
+    "neutralize_on_fill": true
+  },
+  "cleanup": {
+    "enabled": true,
+    "mode": "strict",
+    "scope": "after_sample",
+    "timeout_ms": 15000
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "hyperliquid-python-sdk",
+        "--with",
+        "eth-account",
+        "python",
+        "internal/venues/hyperliquid/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "symbol": "BTC",
+        "asset": 0,
+        "side": "buy",
+        "size": "0.0002",
+        "price": "75000",
+        "price_from_mid": true,
+        "price_offset_bps": "100",
+        "order_type": "market",
+        "tif": "Ioc",
+        "neutralize_slippage_bps": "100"
+      }
+    }
+  }
+}

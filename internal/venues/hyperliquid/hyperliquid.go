@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"perps-latency-benchmark/internal/lifecycle"
 	"perps-latency-benchmark/internal/venues/spec"
@@ -12,6 +13,7 @@ import (
 const DefaultBaseURL = "https://api.hyperliquid.xyz"
 const DefaultHTTPPath = "/exchange"
 const DefaultWSURL = "wss://api.hyperliquid.xyz/ws"
+const WebSocketHeartbeatMessage = `{"method":"ping"}`
 
 const ExchangeEndpointDocsURL = "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint"
 const WebSocketDocsURL = "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket"
@@ -24,6 +26,11 @@ func Definition() spec.Definition {
 		DefaultBaseURL:  DefaultBaseURL,
 		DefaultHTTPPath: DefaultHTTPPath,
 		DefaultWSURL:    DefaultWSURL,
+		WSHeartbeat: spec.WebSocketHeartbeat{
+			Message:   WebSocketHeartbeatMessage,
+			IdleAfter: 45 * time.Second,
+			Timeout:   5 * time.Second,
+		},
 		Capabilities: spec.Capabilities{
 			HTTPSingle:      true,
 			HTTPBatch:       true,
@@ -50,6 +57,7 @@ func Definition() spec.Definition {
 		Notes: []string{
 			"HTTP submits the pre-signed exchange payload directly to POST /exchange.",
 			"WebSocket post requests connect to /ws and must send a wrapper with method=post, id, request.type=action, and request.payload containing the signed exchange payload.",
+			"Hyperliquid closes idle WebSocket connections after 60 seconds, so the venue sends an untimed ping before measured sends when the connection has been idle.",
 			"Signing and any HTTP-to-WebSocket payload wrapping must be done before benchmarking so request preparation only reuses the prebuilt body.",
 		},
 	}

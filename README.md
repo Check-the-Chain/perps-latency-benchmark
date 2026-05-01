@@ -68,6 +68,11 @@ The starter configs use small post-only BTC orders. Keep them small until
 account setup is confirmed. Hyperliquid and Lighter starter configs also cancel
 benchmark orders after each measured submit, outside the latency window.
 
+For long-running Hyperliquid sampling, post-only orders consume action quota
+without adding traded volume. Use `examples/hyperliquid-taker-builder.json`
+when you intentionally want a fill-generating run that earns request capacity
+through real BTC notional and then neutralizes inventory after each sample.
+
 ## Account Commands
 
 ```bash

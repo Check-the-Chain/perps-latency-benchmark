@@ -17,12 +17,14 @@ import os
 import sys
 import time
 import hashlib
+from decimal import Decimal
 from typing import Any
 
 
 def main() -> int:
     try:
         from eth_account import Account
+        from hyperliquid.info import Info
         from hyperliquid.utils.constants import MAINNET_API_URL
         from hyperliquid.utils.signing import (
             order_request_to_order_wire,
@@ -42,6 +44,7 @@ def main() -> int:
         built = build(
             json.loads(line),
             Account,
+            Info,
             MAINNET_API_URL,
             order_request_to_order_wire,
             order_wires_to_order_action,
@@ -55,6 +58,7 @@ def main() -> int:
 def build(
     req: dict[str, Any],
     Account: Any,
+    Info: Any,
     MAINNET_API_URL: str,
     order_request_to_order_wire: Any,
     order_wires_to_order_action: Any,
@@ -68,7 +72,8 @@ def build(
     batch_size = int(req.get("batch_size") or 1)
     orders = params.get("orders")
     if orders is None:
-        orders = [order_from_params(params, req, offset, Cloid) for offset in range(batch_size if scenario == "batch" else 1)]
+        price = dynamic_limit_price(params, Info, MAINNET_API_URL)
+        orders = [order_from_params(params, req, offset, Cloid, price) for offset in range(batch_size if scenario == "batch" else 1)]
     if scenario != "batch":
         orders = orders[:1]
 
@@ -115,16 +120,17 @@ def build(
     return built
 
 
-def order_from_params(params: dict[str, Any], req: dict[str, Any], offset: int, Cloid: Any) -> dict[str, Any]:
+def order_from_params(params: dict[str, Any], req: dict[str, Any], offset: int, Cloid: Any, price: Decimal | None = None) -> dict[str, Any]:
     asset = params.get("asset")
     if asset is None:
         raise SystemExit("Hyperliquid builder requires params.asset for symbol-to-asset mapping")
     cloid = order_cloid(params, req, offset, Cloid)
+    is_buy = str(params.get("side", "buy")).lower() == "buy"
     order: dict[str, Any] = {
         "coin": params.get("symbol", "BTC"),
-        "is_buy": str(params.get("side", "buy")).lower() == "buy",
+        "is_buy": is_buy,
         "sz": float(params["size"]),
-        "limit_px": float(params["price"]),
+        "limit_px": float(price or Decimal(str(params["price"]))),
         "order_type": {"limit": {"tif": order_tif(params)}},
         "reduce_only": bool(params.get("reduce_only", False)),
         "asset": asset,
@@ -132,6 +138,18 @@ def order_from_params(params: dict[str, Any], req: dict[str, Any], offset: int, 
     if cloid:
         order["cloid"] = cloid
     return order
+
+
+def dynamic_limit_price(params: dict[str, Any], Info: Any, MAINNET_API_URL: str) -> Decimal | None:
+    if not bool(params.get("price_from_mid")) and params.get("price_offset_bps") is None:
+        return None
+    symbol = str(params.get("symbol", "BTC"))
+    info = Info(params.get("base_url", MAINNET_API_URL), skip_ws=True)
+    mid = Decimal(str(info.all_mids()[symbol]))
+    offset = Decimal(str(params.get("price_offset_bps", "0"))) / Decimal("10000")
+    if str(params.get("side", "buy")).lower() == "buy":
+        return mid * (Decimal("1") + offset)
+    return mid * (Decimal("1") - offset)
 
 
 def order_tif(params: dict[str, Any]) -> str:

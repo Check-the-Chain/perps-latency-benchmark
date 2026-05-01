@@ -6,10 +6,12 @@ import (
 	"maps"
 	"net/url"
 	"strings"
+	"time"
 
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/lifecycle"
 	"perps-latency-benchmark/internal/names"
+	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/venues/prebuilt"
 )
 
@@ -37,11 +39,18 @@ type Definition struct {
 	DefaultWSURL      string
 	DefaultWSBatchURL string
 	WSReadInitial     bool
+	WSHeartbeat       WebSocketHeartbeat
 	Capabilities      Capabilities
 	BuilderParams     BuilderParams
 	Classifier        lifecycle.Classifier
 	Docs              []string
 	Notes             []string
+}
+
+type WebSocketHeartbeat struct {
+	Message   string
+	IdleAfter time.Duration
+	Timeout   time.Duration
 }
 
 type Config struct {
@@ -71,9 +80,18 @@ func (d Definition) Build(cfg Config) (bench.Venue, error) {
 		req.WSBatchURL = cmp.Or(d.DefaultWSBatchURL, req.WSURL)
 	}
 	req.WSReadInitial = d.WSReadInitial
+	req.WSHeartbeat = d.WSHeartbeat.toNetLatency()
 	req.Classifier = d.Classifier
 
 	return prebuilt.New(req)
+}
+
+func (h WebSocketHeartbeat) toNetLatency() netlatency.WebSocketHeartbeat {
+	return netlatency.WebSocketHeartbeat{
+		Message:   []byte(h.Message),
+		IdleAfter: h.IdleAfter,
+		Timeout:   h.Timeout,
+	}
 }
 
 func (p BuilderParams) Merge(params map[string]any) map[string]any {

@@ -18,29 +18,42 @@ type WebSocketClient struct {
 	conn        *websocket.Conn
 	readLimit   int64
 	readInitial bool
+	heartbeat   WebSocketHeartbeat
+	lastIO      time.Time
+}
+
+type WebSocketHeartbeat struct {
+	Message   []byte
+	IdleAfter time.Duration
+	Timeout   time.Duration
 }
 
 func NewWebSocketClient(url string, headers http.Header, readInitial bool) *WebSocketClient {
+	return NewWebSocketClientWithHeartbeat(url, headers, readInitial, WebSocketHeartbeat{})
+}
+
+func NewWebSocketClientWithHeartbeat(url string, headers http.Header, readInitial bool, heartbeat WebSocketHeartbeat) *WebSocketClient {
 	return &WebSocketClient{
 		url:         url,
 		headers:     headers.Clone(),
 		dialer:      websocket.DefaultDialer,
 		readLimit:   4 << 20,
 		readInitial: readInitial,
+		heartbeat:   heartbeat.normalized(),
 	}
 }
 
 func (c *WebSocketClient) EnsureConnected(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.ensureConnectedLocked(ctx)
+	return c.ensureReadyLocked(ctx)
 }
 
 func (c *WebSocketClient) Do(ctx context.Context, message []byte) (Result, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := c.ensureConnectedLocked(ctx); err != nil {
+	if err := c.ensureReadyLocked(ctx); err != nil {
 		return Result{}, err
 	}
 
@@ -59,6 +72,7 @@ func (c *WebSocketClient) Do(ctx context.Context, message []byte) (Result, error
 		return websocketResult(start, finish, 0, 0), err
 	}
 	writeDone := time.Now()
+	c.lastIO = writeDone
 
 	_, data, err := c.conn.ReadMessage()
 	finish := time.Now()
@@ -70,6 +84,7 @@ func (c *WebSocketClient) Do(ctx context.Context, message []byte) (Result, error
 		return websocketResult(start, finish, writeDone.Sub(start).Nanoseconds(), int64(len(data)), data),
 			fmt.Errorf("websocket response exceeded read limit: %d", len(data))
 	}
+	c.lastIO = finish
 	return websocketResult(start, finish, writeDone.Sub(start).Nanoseconds(), int64(len(data)), data), nil
 }
 
@@ -98,6 +113,44 @@ func (c *WebSocketClient) ensureConnectedLocked(ctx context.Context) error {
 		_ = conn.SetReadDeadline(time.Time{})
 	}
 	c.conn = conn
+	c.lastIO = time.Now()
+	return nil
+}
+
+func (c *WebSocketClient) ensureReadyLocked(ctx context.Context) error {
+	if err := c.ensureConnectedLocked(ctx); err != nil {
+		return err
+	}
+	if err := c.heartbeatIfIdleLocked(ctx); err != nil {
+		c.closeLocked()
+		return c.ensureConnectedLocked(ctx)
+	}
+	return nil
+}
+
+func (c *WebSocketClient) heartbeatIfIdleLocked(ctx context.Context) error {
+	if len(c.heartbeat.Message) == 0 || c.heartbeat.IdleAfter <= 0 || time.Since(c.lastIO) < c.heartbeat.IdleAfter {
+		return nil
+	}
+	deadline := time.Now().Add(c.heartbeat.Timeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return err
+	}
+	if err := c.conn.SetReadDeadline(deadline); err != nil {
+		return err
+	}
+	if err := c.conn.WriteMessage(websocket.TextMessage, c.heartbeat.Message); err != nil {
+		return err
+	}
+	if _, _, err := c.conn.ReadMessage(); err != nil {
+		return err
+	}
+	c.lastIO = time.Now()
+	_ = c.conn.SetWriteDeadline(time.Time{})
+	_ = c.conn.SetReadDeadline(time.Time{})
 	return nil
 }
 
@@ -107,7 +160,18 @@ func (c *WebSocketClient) closeLocked() error {
 	}
 	err := c.conn.Close()
 	c.conn = nil
+	c.lastIO = time.Time{}
 	return err
+}
+
+func (h WebSocketHeartbeat) normalized() WebSocketHeartbeat {
+	if len(h.Message) == 0 {
+		return WebSocketHeartbeat{}
+	}
+	if h.Timeout <= 0 {
+		h.Timeout = 5 * time.Second
+	}
+	return h
 }
 
 func websocketResult(start time.Time, finish time.Time, writeNS int64, bytesRead int64, body ...[]byte) Result {

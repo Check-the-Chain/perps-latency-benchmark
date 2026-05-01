@@ -30,6 +30,12 @@ func TestDefinitionDocumentsOfficialEndpointsAndAliases(t *testing.T) {
 	if definition.DefaultWSURL != DefaultWSURL {
 		t.Fatalf("DefaultWSURL = %q", definition.DefaultWSURL)
 	}
+	if definition.WSHeartbeat.Message != WebSocketHeartbeatMessage {
+		t.Fatalf("WSHeartbeat.Message = %q", definition.WSHeartbeat.Message)
+	}
+	if definition.WSHeartbeat.IdleAfter >= time.Minute {
+		t.Fatalf("WSHeartbeat.IdleAfter = %s", definition.WSHeartbeat.IdleAfter)
+	}
 
 	wantAliases := []string{"hl", "hyper-liquid", "hyper_liquid"}
 	for _, alias := range wantAliases {
@@ -61,6 +67,7 @@ func TestDefinitionDocumentsOfficialEndpointsAndAliases(t *testing.T) {
 	for _, phrase := range []string{
 		"POST /exchange",
 		"method=post",
+		"untimed ping",
 		"request.type=action",
 		"request.payload",
 		"prebuilt body",
