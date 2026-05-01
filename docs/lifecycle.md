@@ -19,6 +19,11 @@ Measurement modes:
 - `ws_confirmation`: subscribe before submission and measure until the matching
   WebSocket order update or trade confirmation arrives.
 
+For cross-venue comparison, prefer post-only `ws_confirmation` runs at a low
+cadence, such as one sample per minute. This compares the time to an accepted
+resting order update without relying on taker execution paths or venue-specific
+market-order handling.
+
 Fill-likely orders require venue-specific cleanup and inventory reconciliation
 before they can be benchmarked repeatedly. Hyperliquid and Lighter support
 strict after-sample neutralization for small fillable profiles.

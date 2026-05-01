@@ -41,6 +41,9 @@ type summaryRow struct {
 	P50MS           float64 `json:"p50_ms"`
 	P95MS           float64 `json:"p95_ms"`
 	P99MS           float64 `json:"p99_ms"`
+	SubmissionP50MS float64 `json:"submission_p50_ms,omitempty"`
+	SubmissionP95MS float64 `json:"submission_p95_ms,omitempty"`
+	SubmissionP99MS float64 `json:"submission_p99_ms,omitempty"`
 	CleanupOK       int     `json:"cleanup_ok"`
 	CleanupFail     int     `json:"cleanup_failed"`
 }
@@ -192,6 +195,9 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 			P50MS:           summary.P50MS,
 			P95MS:           summary.P95MS,
 			P99MS:           summary.P99MS,
+			SubmissionP50MS: summary.SubmissionP50MS,
+			SubmissionP95MS: summary.SubmissionP95MS,
+			SubmissionP99MS: summary.SubmissionP99MS,
 			CleanupOK:       summary.Cleanup.OK,
 			CleanupFail:     summary.Cleanup.Failed,
 		})

@@ -98,13 +98,13 @@ export function DashboardPage() {
 
       <section className="grid gap-3 md:grid-cols-3">
         <MetricCard
-          label="Fastest p50"
+          label="Fastest confirmation p50"
           value={formatLatency(stats.fastestP50?.p50_ms)}
           detail={formatRowLabel(stats.fastestP50)}
           tone="good"
         />
         <MetricCard
-          label="Fastest p95"
+          label="Fastest confirmation p95"
           value={formatLatency(stats.fastestP95?.p95_ms)}
           detail={formatRowLabel(stats.fastestP95)}
           tone="good"

@@ -7,7 +7,9 @@
     "batch_size": 3,
     "rate_per_second": 0,
     "max_in_flight": 1,
-    "latency_mode": "total"
+    "latency_mode": "total",
+    "measurement_mode": "ws_confirmation",
+    "confirmation_timeout_ms": 10000
   },
   "http": {
     "timeout_ms": 10000,

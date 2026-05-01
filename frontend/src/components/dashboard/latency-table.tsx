@@ -18,9 +18,9 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
               <HeaderCell>Metric</HeaderCell>
               <HeaderCell align="right">Measurements</HeaderCell>
               <HeaderCell align="right">OK</HeaderCell>
-              <HeaderCell align="right">p50</HeaderCell>
-              <HeaderCell align="right">p95</HeaderCell>
-              <HeaderCell align="right">p99</HeaderCell>
+              <HeaderCell align="right">Confirm p50</HeaderCell>
+              <HeaderCell align="right">Confirm p95</HeaderCell>
+              <HeaderCell align="right">Ack p50</HeaderCell>
               <HeaderCell align="right">Errors</HeaderCell>
             </tr>
           </thead>
@@ -46,7 +46,9 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
                   <BodyCell align="right">{formatCount(row.ok)}</BodyCell>
                   <BodyCell align="right">{formatLatency(row.p50_ms)}</BodyCell>
                   <BodyCell align="right">{formatLatency(row.p95_ms)}</BodyCell>
-                  <BodyCell align="right">{formatLatency(row.p99_ms)}</BodyCell>
+                  <BodyCell align="right">
+                    {formatLatency(row.submission_p50_ms)}
+                  </BodyCell>
                   <BodyCell align="right">
                     {formatPercent(row.failed / Math.max(row.count, 1))}
                   </BodyCell>

@@ -24,6 +24,9 @@ export interface SummaryRow {
   p50_ms: number
   p95_ms: number
   p99_ms: number
+  submission_p50_ms?: number
+  submission_p95_ms?: number
+  submission_p99_ms?: number
   cleanup_ok: number
   cleanup_failed: number
 }

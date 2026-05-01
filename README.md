@@ -145,8 +145,9 @@ Run a benchmark continuously into a local SQLite store:
 go run ./cmd/perps-bench run-continuous \
   --config examples/lighter-builder.json \
   --env-file .env.wallets.local \
-  --rate 0.2 \
-  --chunk-iterations 12 \
+  --transport websocket \
+  --rate 0.0166667 \
+  --chunk-iterations 1 \
   --cleanup-mode strict \
   --confirm-live \
   --store data/bench.db
