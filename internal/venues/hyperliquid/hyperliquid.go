@@ -28,7 +28,7 @@ func Definition() spec.Definition {
 		DefaultWSURL:    DefaultWSURL,
 		WSHeartbeat: spec.WebSocketHeartbeat{
 			Message:   WebSocketHeartbeatMessage,
-			IdleAfter: 45 * time.Second,
+			IdleAfter: 15 * time.Second,
 			Timeout:   5 * time.Second,
 		},
 		Capabilities: spec.Capabilities{

@@ -36,6 +36,9 @@ func TestDefinitionDocumentsOfficialEndpointsAndAliases(t *testing.T) {
 	if definition.WSHeartbeat.IdleAfter >= time.Minute {
 		t.Fatalf("WSHeartbeat.IdleAfter = %s", definition.WSHeartbeat.IdleAfter)
 	}
+	if definition.WSHeartbeat.IdleAfter >= 20*time.Second {
+		t.Fatalf("WSHeartbeat.IdleAfter = %s, want below 20s sampling interval", definition.WSHeartbeat.IdleAfter)
+	}
 
 	wantAliases := []string{"hl", "hyper-liquid", "hyper_liquid"}
 	for _, alias := range wantAliases {
