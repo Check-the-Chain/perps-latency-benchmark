@@ -84,6 +84,7 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 		baseRunID = bench.NewRunID()
 	}
 	for chunk := 0; ; chunk++ {
+		chunkStarted := time.Now()
 		select {
 		case <-ctx.Done():
 			return nil
@@ -109,7 +110,43 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 			}
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), bench.FormatSummary(result))
+		if err := sleepContinuousChunk(ctx, chunkStarted, cfg.Benchmark.RatePerSecond, chunkCfg.Benchmark.Warmups+chunkCfg.Benchmark.Iterations); err != nil {
+			return nil
+		}
 	}
+}
+
+func sleepContinuousChunk(ctx context.Context, started time.Time, rate float64, samples int) error {
+	if samples <= 0 {
+		return nil
+	}
+	span := continuousChunkSpan(rate, samples)
+	if span <= 0 {
+		return nil
+	}
+	delay := time.Until(started.Add(span))
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func continuousChunkSpan(rate float64, samples int) time.Duration {
+	if rate <= 0 || samples <= 0 {
+		return 0
+	}
+	interval := time.Duration(float64(time.Second) / rate)
+	if interval <= 0 {
+		interval = time.Nanosecond
+	}
+	return time.Duration(samples) * interval
 }
 
 func sampleRecords(result bench.Result) []store.SampleRecord {
