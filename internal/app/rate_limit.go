@@ -21,6 +21,7 @@ type hyperliquidRateStatus struct {
 	NRequestsUsed    int    `json:"nRequestsUsed"`
 	NRequestsCap     int    `json:"nRequestsCap"`
 	NRequestsSurplus int    `json:"nRequestsSurplus"`
+	UserAbstraction  string `json:"userAbstraction"`
 }
 
 func (s *rateLimitState) preflight(ctx context.Context, venueName string, cfg fileConfig) error {
@@ -42,6 +43,9 @@ func (s *rateLimitState) preflight(ctx context.Context, venueName string, cfg fi
 	}
 	if !cfg.RateLimit.ReserveWhenBelow {
 		return fmt.Errorf("hyperliquid request capacity below minimum: remaining=%d min=%d used=%d cap=%d surplus=%d", remaining, minRemaining, status.NRequestsUsed, status.NRequestsCap, status.NRequestsSurplus)
+	}
+	if status.UserAbstraction != "" && status.UserAbstraction != "disabled" {
+		return fmt.Errorf("hyperliquid request capacity below minimum and reserveRequestWeight requires perps balance; account abstraction=%s remaining=%d min=%d", status.UserAbstraction, remaining, minRemaining)
 	}
 	if time.Now().Before(s.reserveBlockedUntil) {
 		return fmt.Errorf("hyperliquid request capacity below minimum and reserve is backing off until %s: remaining=%d min=%d", s.reserveBlockedUntil.UTC().Format(time.RFC3339), remaining, minRemaining)

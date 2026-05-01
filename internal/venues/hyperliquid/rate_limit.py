@@ -27,7 +27,9 @@ def main() -> int:
     wallet = Account.from_key(required_env("HYPERLIQUID_SECRET_KEY"))
     base_url = os.getenv("HYPERLIQUID_BASE_URL", MAINNET_API_URL).rstrip("/")
     if mode == "status":
-        print(compact_json(user_rate_limit(base_url, wallet.address)))
+        status = user_rate_limit(base_url, wallet.address)
+        status["userAbstraction"] = user_abstraction(base_url, wallet.address)
+        print(compact_json(status))
         return 0
     if mode == "reserve":
         if len(sys.argv) < 3:
@@ -36,13 +38,19 @@ def main() -> int:
         if weight <= 0:
             raise SystemExit("reserve weight must be positive")
         reserve_request_weight(base_url, wallet, sign_l1_action, weight)
-        print(compact_json(user_rate_limit(base_url, wallet.address)))
+        status = user_rate_limit(base_url, wallet.address)
+        status["userAbstraction"] = user_abstraction(base_url, wallet.address)
+        print(compact_json(status))
         return 0
     raise SystemExit(f"unknown mode {mode!r}")
 
 
 def user_rate_limit(base_url: str, user: str) -> dict[str, Any]:
     return post_json(f"{base_url}/info", {"type": "userRateLimit", "user": user})
+
+
+def user_abstraction(base_url: str, user: str) -> str:
+    return str(post_json(f"{base_url}/info", {"type": "userAbstraction", "user": user}))
 
 
 def reserve_request_weight(base_url: str, wallet: Any, sign_l1_action: Any, weight: int) -> dict[str, Any]:
