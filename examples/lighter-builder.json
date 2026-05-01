@@ -45,6 +45,7 @@
         "base_amount": 100,
         "price": 750000,
         "side": "buy",
+        "api_key_role": "maker",
         "post_only": true,
         "cleanup_all_open_orders": true
       }

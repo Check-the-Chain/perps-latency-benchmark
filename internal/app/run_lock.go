@@ -63,7 +63,7 @@ func runLockPath(venueName string, cfg fileConfig) (string, error) {
 	}
 	params := definition.BuilderParams.Merge(request.Builder.Params)
 	accountIndex := runtimeParam(params, "account_index", "LIGHTER_ACCOUNT_INDEX")
-	apiKeyIndex := runtimeParam(params, "api_key_index", "LIGHTER_API_KEY_INDEX")
+	apiKeyIndex := lighterRuntimeAPIKeyIndex(params)
 	if accountIndex == "" || apiKeyIndex == "" {
 		return "", nil
 	}
@@ -87,6 +87,56 @@ func runtimeParam(params map[string]any, key string, envKey string) string {
 		}
 	}
 	return strings.TrimSpace(os.Getenv(envKey))
+}
+
+func lighterRuntimeAPIKeyIndex(params map[string]any) string {
+	if apiKeyIndex := paramText(params, "api_key_index"); apiKeyIndex != "" {
+		return apiKeyIndex
+	}
+	role := strings.ToLower(runtimeParam(params, "api_key_role", ""))
+	if role == "" || role == "auto" {
+		role = "maker"
+		if lighterRuntimeTakerOrder(params) {
+			role = "taker"
+		}
+	}
+	switch role {
+	case "maker":
+		return firstRuntimeParam(params, "maker_api_key_index", "LIGHTER_MAKER_API_KEY_INDEX", "LIGHTER_API_KEY_INDEX")
+	case "taker":
+		return firstRuntimeParam(params, "taker_api_key_index", "LIGHTER_TAKER_API_KEY_INDEX", "LIGHTER_API_KEY_INDEX")
+	default:
+		return runtimeParam(params, "api_key_index", "LIGHTER_API_KEY_INDEX")
+	}
+}
+
+func paramText(params map[string]any, key string) string {
+	if value, ok := params[key]; ok && value != nil {
+		return strings.TrimSpace(fmt.Sprint(value))
+	}
+	return ""
+}
+
+func lighterRuntimeTakerOrder(params map[string]any) bool {
+	orderType := strings.TrimSpace(fmt.Sprint(params["order_type"]))
+	timeInForce := strings.TrimSpace(fmt.Sprint(params["time_in_force"]))
+	return orderType == "1" || timeInForce == "0"
+}
+
+func firstRuntimeParam(params map[string]any, key string, envKeys ...string) string {
+	if value, ok := params[key]; ok && value != nil {
+		text := strings.TrimSpace(fmt.Sprint(value))
+		if text != "" {
+			return text
+		}
+	}
+	for _, envKey := range envKeys {
+		text := strings.TrimSpace(os.Getenv(envKey))
+		if text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func lockPart(value string) string {

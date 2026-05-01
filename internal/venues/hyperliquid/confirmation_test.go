@@ -1,6 +1,11 @@
 package hyperliquid
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"perps-latency-benchmark/internal/netlatency"
+)
 
 func TestMatchHyperliquidConfirmationAcceptsFilledMarket(t *testing.T) {
 	matched, err := matchHyperliquidConfirmation(map[string]any{
@@ -47,5 +52,13 @@ func TestMatchHyperliquidConfirmationAcceptsOpenPostOnly(t *testing.T) {
 	}
 	if !matched {
 		t.Fatal("expected open post-only confirmation")
+	}
+}
+
+func TestHLConfirmStartUsesCompletedWriteTime(t *testing.T) {
+	start := time.Unix(10, 0).UTC()
+	got := hlConfirmStart(netlatency.Trace{StartedAt: start, WroteRequestAtNS: int64(2 * time.Millisecond)})
+	if want := start.Add(2 * time.Millisecond); !got.Equal(want) {
+		t.Fatalf("hlConfirmStart = %s, want %s", got, want)
 	}
 }

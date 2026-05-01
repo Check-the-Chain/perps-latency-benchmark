@@ -42,9 +42,9 @@ async def serve(lighter: Any) -> None:
 
 async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
     params = dict(req.get("params") or {})
-    api_key_index = int(env_or_param(params, "api_key_index", "LIGHTER_API_KEY_INDEX"))
+    order_type = benchmark_order_type(lighter.SignerClient, params)
+    api_key_index, private_key, api_key_role = api_key_material(params, order_type)
     account_index = int(env_or_param(params, "account_index", "LIGHTER_ACCOUNT_INDEX"))
-    private_key = env_or_param(params, "private_key", "LIGHTER_PRIVATE_KEY")
 
     client = lighter.SignerClient(
         url=params.get("base_url", "https://mainnet.zklighter.elliot.ai"),
@@ -65,13 +65,13 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
                 cleanup_orders.append(cleanup_ref)
             body = urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)})
             ws_body = compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}})
-            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "run_id": params.get("run_id"), "order_type": benchmark_order_type(client, params), "cleanup_orders": cleanup_orders}
+            metadata = {"builder": "lighter-python-sdk", "orders": batch_size, "run_id": params.get("run_id"), "order_type": order_type, "api_key_role": api_key_role, "cleanup_orders": cleanup_orders}
         else:
             order_api_key_index, nonce = order_nonce(client, params, api_key_index, 0)
             tx_type, tx_info, cleanup_ref = sign_order(client, req, params, order_api_key_index, nonce, 0)
             body = urlencode({"tx_type": tx_type, "tx_info": tx_info})
             ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": json.loads(tx_info)}})
-            metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "order_type": benchmark_order_type(client, params), "cleanup_orders": [cleanup_ref]}
+            metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "order_type": order_type, "api_key_role": api_key_role, "cleanup_orders": [cleanup_ref]}
         metadata["confirmation"] = confirmation_metadata(client, params, api_key_index, account_index, metadata["order_type"], cleanup_orders if scenario == "batch" else [cleanup_ref])
     finally:
         await client.close()
@@ -82,6 +82,36 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
         "ws_body": ws_body,
         "metadata": metadata,
     }
+
+
+def api_key_material(params: dict[str, Any], order_type: str) -> tuple[int, str, str]:
+    explicit_key = params.get("api_key_index") is not None or params.get("private_key")
+    role = str(params.get("api_key_role") or ("default" if explicit_key else "auto")).lower()
+    if role == "auto":
+        role = "maker" if order_type == "post_only" else "taker"
+    if role == "maker" and order_type != "post_only":
+        raise SystemExit("Lighter maker API keys can only be used for post-only orders")
+    if role not in {"maker", "taker", "default"}:
+        raise SystemExit(f"unsupported Lighter api_key_role {role!r}")
+
+    if explicit_key:
+        return (
+            int(env_or_param(params, "api_key_index", "LIGHTER_API_KEY_INDEX")),
+            env_or_param(params, "private_key", "LIGHTER_PRIVATE_KEY"),
+            role,
+        )
+
+    if role == "maker":
+        api_key_index = first_value(params, "maker_api_key_index", "LIGHTER_MAKER_API_KEY_INDEX", "LIGHTER_API_KEY_INDEX")
+        private_key = first_value(params, "maker_private_key", "LIGHTER_MAKER_PRIVATE_KEY", "LIGHTER_PRIVATE_KEY")
+    elif role == "taker":
+        api_key_index = first_value(params, "taker_api_key_index", "LIGHTER_TAKER_API_KEY_INDEX", "LIGHTER_API_KEY_INDEX")
+        private_key = first_value(params, "taker_private_key", "LIGHTER_TAKER_PRIVATE_KEY", "LIGHTER_PRIVATE_KEY")
+    else:
+        api_key_index = first_value(params, "api_key_index", "LIGHTER_API_KEY_INDEX")
+        private_key = first_value(params, "private_key", "LIGHTER_PRIVATE_KEY")
+
+    return int(api_key_index), private_key, role
 
 
 def sign_order(client: Any, req: dict[str, Any], params: dict[str, Any], api_key_index: int, nonce: int, offset: int) -> tuple[int, str, dict[str, Any]]:
@@ -200,6 +230,17 @@ def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:
     if value in (None, ""):
         raise SystemExit(f"missing {key}; set params.{key} or {env_key}")
     return str(value)
+
+
+def first_value(params: dict[str, Any], key: str, *env_keys: str) -> str:
+    value = params.get(key)
+    if value not in (None, ""):
+        return str(value)
+    for env_key in env_keys:
+        value = os.getenv(env_key)
+        if value not in (None, ""):
+            return str(value)
+    raise SystemExit(f"missing {key}; set params.{key} or one of {', '.join(env_keys)}")
 
 
 def compact_json(value: Any) -> str:

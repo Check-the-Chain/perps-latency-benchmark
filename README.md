@@ -35,6 +35,8 @@ Complete the venue-side setup:
 - Lighter: use the printed Ethereum address for account creation/deposits,
   generate an API key in Lighter, fill `LIGHTER_PRIVATE_KEY`,
   `LIGHTER_ACCOUNT_INDEX`, and `LIGHTER_API_KEY_INDEX` in `.env.wallets.local`,
+  optionally set `LIGHTER_MAKER_PRIVATE_KEY` and
+  `LIGHTER_MAKER_API_KEY_INDEX` for a maker-only key,
   then adjust the BTC order params in `examples/lighter-builder.json` if
   needed.
 
@@ -261,6 +263,8 @@ and metadata prepared for another venue.
   with the venue UI.
 - Lighter account errors: confirm `LIGHTER_ACCOUNT_INDEX`,
   `LIGHTER_API_KEY_INDEX`, and `LIGHTER_PRIVATE_KEY` match the active API key.
+  If using maker-only mode, confirm `LIGHTER_MAKER_API_KEY_INDEX` is marked
+  maker-only in Lighter.
 - Lighter runner already active: use a separate Lighter API key for each
   concurrent runner, or stop the existing process using the same key.
 - Config rejected for transport: the venue does not support that

@@ -180,12 +180,13 @@ func websocketResult(start time.Time, finish time.Time, writeNS int64, bytesRead
 		StatusCode: 0,
 		BytesRead:  bytesRead,
 		Trace: Trace{
-			StartedAt:      start.UTC(),
-			TotalNS:        totalNS,
-			Transport:      "websocket",
-			RequestWriteNS: writeNS,
-			TTFBNS:         totalNS,
-			ResponseWaitNS: totalNS - writeNS,
+			StartedAt:        start.UTC(),
+			TotalNS:          totalNS,
+			Transport:        "websocket",
+			RequestWriteNS:   writeNS,
+			TTFBNS:           totalNS,
+			ResponseWaitNS:   totalNS - writeNS,
+			WroteRequestAtNS: writeNS,
 		},
 	}
 	if len(body) > 0 {

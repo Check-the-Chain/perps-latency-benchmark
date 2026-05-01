@@ -46,6 +46,9 @@ func TestWebSocketClientDo(t *testing.T) {
 	if result.Trace.TotalNS <= 0 {
 		t.Fatal("expected total duration")
 	}
+	if result.Trace.WroteRequestAtNS <= 0 {
+		t.Fatal("expected websocket write timestamp")
+	}
 	if result.BytesRead == 0 {
 		t.Fatal("expected response bytes")
 	}

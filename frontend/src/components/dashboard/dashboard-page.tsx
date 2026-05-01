@@ -17,6 +17,7 @@ import {
   type DashboardFilters,
 } from "@/components/dashboard/filters"
 import { LatencyTable } from "@/components/dashboard/latency-table"
+import { MethodologyPanel } from "@/components/dashboard/methodology-panel"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { StatusPill } from "@/components/dashboard/status-pill"
 import {
@@ -117,6 +118,7 @@ export function DashboardPage() {
         />
       </section>
 
+      <MethodologyPanel />
       <LatencyTimeseriesChart samples={filteredSamples} />
       <LatencyTable rows={filteredSummaries} />
     </div>

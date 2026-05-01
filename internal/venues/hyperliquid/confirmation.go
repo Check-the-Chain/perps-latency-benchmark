@@ -51,12 +51,22 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	orderType := hlText(raw["order_type"])
 	return &bench.Confirmation{
 		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, submission.Trace.StartedAt, func(msg map[string]any) (bool, error) {
+			return client.Wait(ctx, hlConfirmStart(submission.Trace), func(msg map[string]any) (bool, error) {
 				return matchHyperliquidConfirmation(msg, cloids, orderType)
 			})
 		},
 		Close: cleanup,
 	}, nil
+}
+
+func hlConfirmStart(trace netlatency.Trace) time.Time {
+	if trace.WroteRequestAtNS > 0 {
+		return trace.StartedAt.Add(time.Duration(trace.WroteRequestAtNS))
+	}
+	if trace.RequestWriteNS > 0 {
+		return trace.StartedAt.Add(time.Duration(trace.RequestWriteNS))
+	}
+	return trace.StartedAt
 }
 
 func matchHyperliquidConfirmation(msg map[string]any, cloids map[string]struct{}, orderType string) (bool, error) {

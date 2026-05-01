@@ -47,6 +47,7 @@
         "base_amount": 100,
         "price": 1500000,
         "side": "buy",
+        "api_key_role": "taker",
         "order_type": 1,
         "time_in_force": 0
       }

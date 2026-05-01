@@ -1,6 +1,11 @@
 package lighter
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"perps-latency-benchmark/internal/netlatency"
+)
 
 func TestMatchLighterConfirmationByTradeClientID(t *testing.T) {
 	matched, err := matchLighterConfirmation(map[string]any{
@@ -44,5 +49,13 @@ func TestMatchLighterConfirmationAcceptsPostOnlyOpen(t *testing.T) {
 	}
 	if !matched {
 		t.Fatal("expected open post-only order confirmation")
+	}
+}
+
+func TestConfirmStartUsesCompletedWriteTime(t *testing.T) {
+	start := time.Unix(10, 0).UTC()
+	got := confirmStart(netlatency.Trace{StartedAt: start, WroteRequestAtNS: int64(2 * time.Millisecond)})
+	if want := start.Add(2 * time.Millisecond); !got.Equal(want) {
+		t.Fatalf("confirmStart = %s, want %s", got, want)
 	}
 }

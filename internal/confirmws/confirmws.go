@@ -94,6 +94,9 @@ func result(start time.Time, finish time.Time, bytesRead int64, body []byte) net
 	if start.IsZero() {
 		start = finish
 	}
+	if finish.Before(start) {
+		finish = start
+	}
 	totalNS := finish.Sub(start).Nanoseconds()
 	return netlatency.Result{
 		BytesRead: bytesRead,

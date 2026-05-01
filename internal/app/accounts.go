@@ -320,6 +320,7 @@ func printVenueChecklist(w io.Writer, spec accounts.VenueSpec, env map[string]st
 		printValueOrMissing(w, "ethereum setup/funding wallet", l1Address)
 		fmt.Fprintln(w, "   - Use the Ethereum wallet for Lighter account creation and deposits.")
 		fmt.Fprintln(w, "   - Generate an API key in Lighter, then fill LIGHTER_PRIVATE_KEY, LIGHTER_ACCOUNT_INDEX, and LIGHTER_API_KEY_INDEX in .env.wallets.local.")
+		fmt.Fprintln(w, "   - For maker latency runs, use a separate maker-only API key and fill LIGHTER_MAKER_PRIVATE_KEY and LIGHTER_MAKER_API_KEY_INDEX.")
 		fmt.Fprintln(w, "   - Fund the Lighter account with enough collateral for the configured market.")
 		fmt.Fprintln(w, "   - Adjust examples/lighter-builder.json if you want to change the default BTC order params.")
 		fmt.Fprintln(w, "   - Run with: go run ./cmd/perps-bench run --config examples/lighter-builder.json --env-file .env.wallets.local --confirm-live")

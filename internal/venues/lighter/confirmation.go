@@ -51,20 +51,39 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 		_ = cleanup()
 		return nil, err
 	}
-	_ = client.WriteJSON(ctx, map[string]any{
+	if err := client.WriteJSON(subscribeCtx, map[string]any{
 		"type":    "subscribe",
 		"channel": fmt.Sprintf("account_all_trades/%s", accountIndex),
 		"auth":    auth,
-	})
+	}); err != nil {
+		_ = cleanup()
+		return nil, err
+	}
+	if err := client.DrainUntil(subscribeCtx, func(msg map[string]any) bool {
+		return strings.HasPrefix(text(msg["channel"]), "account_all_trades:")
+	}); err != nil {
+		_ = cleanup()
+		return nil, err
+	}
 	orderType := text(raw["order_type"])
 	return &bench.Confirmation{
 		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, submission.Trace.StartedAt, func(msg map[string]any) (bool, error) {
+			return client.Wait(ctx, confirmStart(submission.Trace), func(msg map[string]any) (bool, error) {
 				return matchLighterConfirmation(msg, marketIndex, orderIDs, orderType)
 			})
 		},
 		Close: cleanup,
 	}, nil
+}
+
+func confirmStart(trace netlatency.Trace) time.Time {
+	if trace.WroteRequestAtNS > 0 {
+		return trace.StartedAt.Add(time.Duration(trace.WroteRequestAtNS))
+	}
+	if trace.RequestWriteNS > 0 {
+		return trace.StartedAt.Add(time.Duration(trace.RequestWriteNS))
+	}
+	return trace.StartedAt
 }
 
 func matchLighterConfirmation(msg map[string]any, marketIndex string, orderIDs map[string]struct{}, orderType string) (bool, error) {

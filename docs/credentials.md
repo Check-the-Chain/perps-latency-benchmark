@@ -92,6 +92,10 @@ LIGHTER_L1_ADDRESS=
 LIGHTER_PRIVATE_KEY=
 LIGHTER_ACCOUNT_INDEX=
 LIGHTER_API_KEY_INDEX=
+LIGHTER_MAKER_PRIVATE_KEY=
+LIGHTER_MAKER_API_KEY_INDEX=
+LIGHTER_TAKER_PRIVATE_KEY=
+LIGHTER_TAKER_API_KEY_INDEX=
 ```
 
 Lighter has two key roles. Its official docs state that account creation and
@@ -106,8 +110,15 @@ Use Lighter to generate the trading API key, then copy the active key material
 and indexes into `LIGHTER_PRIVATE_KEY`, `LIGHTER_ACCOUNT_INDEX`, and
 `LIGHTER_API_KEY_INDEX`.
 
-Run only one live Lighter benchmark process per `LIGHTER_ACCOUNT_INDEX` /
-`LIGHTER_API_KEY_INDEX` pair. Lighter nonces are tied to the API key, so
+For Lighter maker latency runs, use a separate API key and mark that key
+maker-only in Lighter. Put it in `LIGHTER_MAKER_PRIVATE_KEY` and
+`LIGHTER_MAKER_API_KEY_INDEX`. The Lighter builder automatically uses the maker
+key for post-only orders and the taker key for market/IOC orders. Taker runs use
+`LIGHTER_TAKER_PRIVATE_KEY` / `LIGHTER_TAKER_API_KEY_INDEX` when present, then
+fall back to `LIGHTER_PRIVATE_KEY` / `LIGHTER_API_KEY_INDEX`.
+
+Run only one live Lighter benchmark process per Lighter account/API key pair.
+Lighter nonces are tied to the API key, so
 parallel maker/market or HTTPS/WebSocket runners need separate Lighter API keys.
 The CLI enforces this with a local process lock and exits before submitting if
 another runner is already using the same pair.

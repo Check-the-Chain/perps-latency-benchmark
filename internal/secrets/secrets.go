@@ -24,6 +24,13 @@ var sensitiveFragments = []string{
 	"token",
 }
 
+var nonSensitiveKeys = map[string]struct{}{
+	"api_key_index":       {},
+	"api_key_role":        {},
+	"maker_api_key_index": {},
+	"taker_api_key_index": {},
+}
+
 var assignmentPattern = regexp.MustCompile(`(?i)(["']?)([A-Za-z0-9_.\-/]*(?:secret|private[_-]?key|api[_-]?key|authorization|token|cookie|signature|passphrase|password|mnemonic|seed)[A-Za-z0-9_.\-/]*)(["']?)(\s*[:=]\s*)(["']?)[^"',\s}]+(["']?)`)
 
 type Finding struct {
@@ -36,6 +43,9 @@ func (f Finding) Error() string {
 
 func ContainsSensitiveKey(key string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "-", "_"), " ", "_"))
+	if _, ok := nonSensitiveKeys[normalized]; ok {
+		return false
+	}
 	compact := strings.ReplaceAll(normalized, "_", "")
 	for _, fragment := range sensitiveFragments {
 		if strings.Contains(normalized, fragment) || strings.Contains(compact, strings.ReplaceAll(fragment, "_", "")) {

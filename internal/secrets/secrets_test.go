@@ -29,6 +29,24 @@ func TestFindInlineSecrets(t *testing.T) {
 	}
 }
 
+func TestLighterAPIKeyMetadataIsNotSecret(t *testing.T) {
+	cfg := map[string]any{
+		"params": map[string]any{
+			"api_key_role":        "maker",
+			"maker_api_key_index": 4,
+			"taker_api_key_index": 5,
+		},
+	}
+
+	findings, err := FindInlineSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %#v", findings)
+	}
+}
+
 func TestRedactString(t *testing.T) {
 	input := `{"private_key":"abc","ok":true} HYPERLIQUID_SECRET_KEY=def token: ghi`
 	got := RedactString(input)
