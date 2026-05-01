@@ -119,3 +119,22 @@ CREATE TABLE samples (
 		t.Fatal(err)
 	}
 }
+
+func TestSQLiteDSNIncludesConnectionPragmas(t *testing.T) {
+	dsn := sqliteDSN(filepath.Join(t.TempDir(), "bench.db"))
+	if dsn == "" {
+		t.Fatal("empty dsn")
+	}
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var timeout int
+	if err := db.QueryRow(`PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+		t.Fatal(err)
+	}
+	if timeout != 10000 {
+		t.Fatalf("busy_timeout = %d, want 10000", timeout)
+	}
+}
