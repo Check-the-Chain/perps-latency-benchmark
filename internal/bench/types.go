@@ -22,17 +22,26 @@ const (
 	LatencyModeTTFB  LatencyMode = "ttfb"
 )
 
+type MeasurementMode string
+
+const (
+	MeasurementModeAck            MeasurementMode = "ack"
+	MeasurementModeWSConfirmation MeasurementMode = "ws_confirmation"
+)
+
 type Config struct {
-	RunID         string
-	Scenario      Scenario
-	Iterations    int
-	Warmups       int
-	BatchSize     int
-	RatePerSecond float64
-	MaxInFlight   int
-	StopOnError   bool
-	LatencyMode   LatencyMode
-	Cleanup       CleanupConfig
+	RunID               string
+	Scenario            Scenario
+	Iterations          int
+	Warmups             int
+	BatchSize           int
+	RatePerSecond       float64
+	MaxInFlight         int
+	StopOnError         bool
+	LatencyMode         LatencyMode
+	MeasurementMode     MeasurementMode
+	ConfirmationTimeout time.Duration
+	Cleanup             CleanupConfig
 }
 
 type CleanupMode string
@@ -60,8 +69,14 @@ type PreparedRequest struct {
 	Transport  string
 	Request    netlatency.RequestTemplate
 	Execute    func(context.Context) (netlatency.Result, error)
+	Confirm    *Confirmation
 	Classifier lifecycle.Classifier
 	Metadata   map[string]any
+}
+
+type Confirmation struct {
+	Wait  func(context.Context, netlatency.Result) (netlatency.Result, error)
+	Close func() error
 }
 
 type Venue interface {
@@ -101,48 +116,52 @@ type CleanupResult struct {
 }
 
 type Sample struct {
-	Venue          string                   `json:"venue"`
-	RunID          string                   `json:"run_id,omitempty"`
-	Scenario       Scenario                 `json:"scenario"`
-	Transport      string                   `json:"transport"`
-	OrderType      string                   `json:"order_type,omitempty"`
-	Index          int                      `json:"index"`
-	Iteration      int                      `json:"iteration"`
-	Warmup         bool                     `json:"warmup"`
-	BatchSize      int                      `json:"batch_size"`
-	ScheduledAt    time.Time                `json:"scheduled_at,omitempty"`
-	SentAt         time.Time                `json:"sent_at,omitempty"`
-	PreparedNS     int64                    `json:"prepared_ns"`
-	NetworkNS      int64                    `json:"network_ns"`
-	CorrectedNS    int64                    `json:"corrected_ns,omitempty"`
-	StartDelayNS   int64                    `json:"start_delay_ns,omitempty"`
-	StatusCode     int                      `json:"status_code,omitempty"`
-	BytesRead      int64                    `json:"bytes_read,omitempty"`
-	OK             bool                     `json:"ok"`
-	Error          string                   `json:"error,omitempty"`
-	Classification lifecycle.Classification `json:"classification"`
-	Cleanup        *CleanupResult           `json:"cleanup,omitempty"`
-	Trace          netlatency.Trace         `json:"trace"`
-	Metadata       map[string]any           `json:"metadata,omitempty"`
-	CompletedAt    time.Time                `json:"completed_at"`
+	Venue           string                   `json:"venue"`
+	RunID           string                   `json:"run_id,omitempty"`
+	Scenario        Scenario                 `json:"scenario"`
+	Transport       string                   `json:"transport"`
+	OrderType       string                   `json:"order_type,omitempty"`
+	Index           int                      `json:"index"`
+	Iteration       int                      `json:"iteration"`
+	Warmup          bool                     `json:"warmup"`
+	BatchSize       int                      `json:"batch_size"`
+	ScheduledAt     time.Time                `json:"scheduled_at,omitempty"`
+	SentAt          time.Time                `json:"sent_at,omitempty"`
+	PreparedNS      int64                    `json:"prepared_ns"`
+	NetworkNS       int64                    `json:"network_ns"`
+	SubmissionNS    int64                    `json:"submission_ns,omitempty"`
+	CorrectedNS     int64                    `json:"corrected_ns,omitempty"`
+	StartDelayNS    int64                    `json:"start_delay_ns,omitempty"`
+	StatusCode      int                      `json:"status_code,omitempty"`
+	BytesRead       int64                    `json:"bytes_read,omitempty"`
+	OK              bool                     `json:"ok"`
+	Error           string                   `json:"error,omitempty"`
+	Classification  lifecycle.Classification `json:"classification"`
+	Cleanup         *CleanupResult           `json:"cleanup,omitempty"`
+	Trace           netlatency.Trace         `json:"trace"`
+	Metadata        map[string]any           `json:"metadata,omitempty"`
+	MeasurementMode MeasurementMode          `json:"measurement_mode,omitempty"`
+	CompletedAt     time.Time                `json:"completed_at"`
 }
 
 type Result struct {
-	Venue          string         `json:"venue"`
-	RunID          string         `json:"run_id,omitempty"`
-	Scenario       Scenario       `json:"scenario"`
-	LatencyMode    LatencyMode    `json:"latency_mode"`
-	StartupCleanup *CleanupResult `json:"startup_cleanup,omitempty"`
-	Reconciliation *CleanupResult `json:"reconciliation,omitempty"`
-	Samples        []Sample       `json:"samples"`
+	Venue           string          `json:"venue"`
+	RunID           string          `json:"run_id,omitempty"`
+	Scenario        Scenario        `json:"scenario"`
+	LatencyMode     LatencyMode     `json:"latency_mode"`
+	MeasurementMode MeasurementMode `json:"measurement_mode,omitempty"`
+	StartupCleanup  *CleanupResult  `json:"startup_cleanup,omitempty"`
+	Reconciliation  *CleanupResult  `json:"reconciliation,omitempty"`
+	Samples         []Sample        `json:"samples"`
 }
 
 type ComparisonResult struct {
-	Venue       string      `json:"venue"`
-	RunID       string      `json:"run_id,omitempty"`
-	Scenario    Scenario    `json:"scenario"`
-	LatencyMode LatencyMode `json:"latency_mode"`
-	Results     []Result    `json:"results"`
+	Venue           string          `json:"venue"`
+	RunID           string          `json:"run_id,omitempty"`
+	Scenario        Scenario        `json:"scenario"`
+	LatencyMode     LatencyMode     `json:"latency_mode"`
+	MeasurementMode MeasurementMode `json:"measurement_mode,omitempty"`
+	Results         []Result        `json:"results"`
 }
 
 func (r Result) MeasuredSamples() []Sample {
@@ -173,6 +192,12 @@ func (c Config) Normalized() Config {
 	}
 	if c.LatencyMode == "" {
 		c.LatencyMode = LatencyModeTotal
+	}
+	if c.MeasurementMode == "" {
+		c.MeasurementMode = MeasurementModeAck
+	}
+	if c.ConfirmationTimeout == 0 {
+		c.ConfirmationTimeout = 10 * time.Second
 	}
 	c.Cleanup = c.Cleanup.Normalized()
 	return c

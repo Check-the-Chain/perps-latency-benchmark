@@ -19,20 +19,22 @@ type runOptions struct {
 	configPath string
 	envFiles   []string
 
-	venue            string
-	runID            string
-	scenario         string
-	iterations       int
-	warmups          int
-	batchSize        int
-	ratePerSecond    float64
-	maxInFlight      int
-	latencyMode      string
-	stopOnError      bool
-	cleanup          bool
-	cleanupMode      string
-	cleanupScope     string
-	cleanupTimeoutMS int
+	venue                 string
+	runID                 string
+	scenario              string
+	iterations            int
+	warmups               int
+	batchSize             int
+	ratePerSecond         float64
+	maxInFlight           int
+	latencyMode           string
+	measurementMode       string
+	confirmationTimeoutMS int
+	stopOnError           bool
+	cleanup               bool
+	cleanupMode           string
+	cleanupScope          string
+	cleanupTimeoutMS      int
 
 	timeoutMS           int
 	maxIdleConns        int
@@ -76,6 +78,8 @@ func addRunFlags(cmd *cobra.Command, opts *runOptions) {
 	flags.Float64Var(&opts.ratePerSecond, "rate", 0, "Open-loop fixed request rate per second. Default 0 runs closed-loop sequential mode.")
 	flags.IntVar(&opts.maxInFlight, "max-in-flight", 0, "Maximum open-loop requests in flight.")
 	flags.StringVar(&opts.latencyMode, "latency-mode", "", "Latency metric: total or ttfb.")
+	flags.StringVar(&opts.measurementMode, "measurement-mode", "", "Measurement mode: ack or ws_confirmation.")
+	flags.IntVar(&opts.confirmationTimeoutMS, "confirmation-timeout-ms", 0, "WebSocket confirmation timeout in milliseconds.")
 	flags.BoolVar(&opts.stopOnError, "stop-on-error", false, "Stop after the first failed sample.")
 	flags.BoolVar(&opts.cleanup, "cleanup", false, "Cancel benchmark orders outside the measured latency window.")
 	flags.StringVar(&opts.cleanupMode, "cleanup-mode", "", "Cleanup mode: best_effort or strict.")
@@ -211,10 +215,11 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 		fmt.Fprintln(cmd.ErrOrStderr(), "warning: compare-transports is running with warmups=0; first HTTPS sample may include connection/TLS setup while WebSocket connect is prepared outside the timed send path")
 	}
 	comparison := bench.ComparisonResult{
-		Venue:       venueName,
-		RunID:       benchConfig.RunID,
-		Scenario:    benchConfig.Scenario,
-		LatencyMode: benchConfig.LatencyMode,
+		Venue:           venueName,
+		RunID:           benchConfig.RunID,
+		Scenario:        benchConfig.Scenario,
+		LatencyMode:     benchConfig.LatencyMode,
+		MeasurementMode: benchConfig.MeasurementMode,
 	}
 	lock, err := acquireRunLock(venueName, cfg)
 	if err != nil {
@@ -273,6 +278,11 @@ func setTransport(cfg *fileConfig, venueName string, transport string) {
 }
 
 func validateRunConfig(venueName string, cfg fileConfig) error {
+	switch cfg.Benchmark.toBenchConfig().MeasurementMode {
+	case bench.MeasurementModeAck, bench.MeasurementModeWSConfirmation:
+	default:
+		return fmt.Errorf("benchmark.measurement_mode must be ack or ws_confirmation")
+	}
 	if venueName == "mock" || venueName == "http" {
 		return validateBuilderConfig(cfg.Request.Builder)
 	}

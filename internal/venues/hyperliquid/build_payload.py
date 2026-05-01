@@ -107,15 +107,16 @@ def build(
     built: dict[str, Any] = {
         "headers": {"Content-Type": "application/json"},
         "body": compact_json(payload),
-        "metadata": {
-            "builder": "hyperliquid-python-sdk",
-            "nonce": nonce,
-            "run_id": params.get("run_id"),
-            "order_type": benchmark_order_type(params),
-            "time_in_force": order_tif(params),
-            "cleanup_orders": cleanup_orders,
-        },
-    }
+            "metadata": {
+                "builder": "hyperliquid-python-sdk",
+                "nonce": nonce,
+                "run_id": params.get("run_id"),
+                "order_type": benchmark_order_type(params),
+                "time_in_force": order_tif(params),
+                "cleanup_orders": cleanup_orders,
+                "confirmation": confirmation_metadata(params, wallet.address, cleanup_orders),
+            },
+        }
     if req.get("transport") == "websocket":
         built["ws_body"] = compact_json(
             {
@@ -207,6 +208,16 @@ def cleanup_ref(order: dict[str, Any]) -> dict[str, Any]:
         "asset": int(order["asset"]),
         "symbol": order["coin"],
         "cloid": cloid.to_raw() if hasattr(cloid, "to_raw") else str(cloid),
+    }
+
+
+def confirmation_metadata(params: dict[str, Any], user: str, orders: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "venue": "hyperliquid",
+        "ws_url": params.get("ws_url", "wss://api.hyperliquid.xyz/ws"),
+        "user": user,
+        "order_type": benchmark_order_type(params),
+        "cloids": [order["cloid"] for order in orders if order.get("cloid")],
     }
 
 

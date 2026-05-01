@@ -26,15 +26,17 @@ type fileConfig struct {
 }
 
 type benchmarkConfig struct {
-	RunID         string  `json:"run_id"`
-	Scenario      string  `json:"scenario"`
-	Iterations    int     `json:"iterations"`
-	Warmups       int     `json:"warmups"`
-	BatchSize     int     `json:"batch_size"`
-	RatePerSecond float64 `json:"rate_per_second"`
-	MaxInFlight   int     `json:"max_in_flight"`
-	StopOnError   bool    `json:"stop_on_error"`
-	LatencyMode   string  `json:"latency_mode"`
+	RunID                 string  `json:"run_id"`
+	Scenario              string  `json:"scenario"`
+	Iterations            int     `json:"iterations"`
+	Warmups               int     `json:"warmups"`
+	BatchSize             int     `json:"batch_size"`
+	RatePerSecond         float64 `json:"rate_per_second"`
+	MaxInFlight           int     `json:"max_in_flight"`
+	StopOnError           bool    `json:"stop_on_error"`
+	LatencyMode           string  `json:"latency_mode"`
+	MeasurementMode       string  `json:"measurement_mode"`
+	ConfirmationTimeoutMS int     `json:"confirmation_timeout_ms"`
 }
 
 type httpConfig struct {
@@ -226,15 +228,17 @@ func validateNoInlineSecrets(cfg fileConfig) error {
 
 func (c benchmarkConfig) toBenchConfig() bench.Config {
 	return bench.Config{
-		RunID:         c.RunID,
-		Scenario:      bench.Scenario(c.Scenario),
-		Iterations:    c.Iterations,
-		Warmups:       c.Warmups,
-		BatchSize:     c.BatchSize,
-		RatePerSecond: c.RatePerSecond,
-		MaxInFlight:   c.MaxInFlight,
-		StopOnError:   c.StopOnError,
-		LatencyMode:   bench.LatencyMode(c.LatencyMode),
+		RunID:               c.RunID,
+		Scenario:            bench.Scenario(c.Scenario),
+		Iterations:          c.Iterations,
+		Warmups:             c.Warmups,
+		BatchSize:           c.BatchSize,
+		RatePerSecond:       c.RatePerSecond,
+		MaxInFlight:         c.MaxInFlight,
+		StopOnError:         c.StopOnError,
+		LatencyMode:         bench.LatencyMode(c.LatencyMode),
+		MeasurementMode:     bench.MeasurementMode(c.MeasurementMode),
+		ConfirmationTimeout: durationMS(c.ConfirmationTimeoutMS),
 		Cleanup: bench.CleanupConfig{
 			Enabled:   false,
 			Mode:      bench.CleanupModeOff,

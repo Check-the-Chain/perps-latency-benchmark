@@ -92,11 +92,12 @@ func (r Runner) runClosedLoop(ctx context.Context, cfg Config) Result {
 	}
 
 	return Result{
-		Venue:       r.Venue.Name(),
-		RunID:       cfg.RunID,
-		Scenario:    cfg.Scenario,
-		LatencyMode: cfg.LatencyMode,
-		Samples:     samples,
+		Venue:           r.Venue.Name(),
+		RunID:           cfg.RunID,
+		Scenario:        cfg.Scenario,
+		LatencyMode:     cfg.LatencyMode,
+		MeasurementMode: cfg.MeasurementMode,
+		Samples:         samples,
 	}
 }
 
@@ -156,11 +157,12 @@ schedule:
 	}
 
 	return Result{
-		Venue:       r.Venue.Name(),
-		RunID:       cfg.RunID,
-		Scenario:    cfg.Scenario,
-		LatencyMode: cfg.LatencyMode,
-		Samples:     samples,
+		Venue:           r.Venue.Name(),
+		RunID:           cfg.RunID,
+		Scenario:        cfg.Scenario,
+		LatencyMode:     cfg.LatencyMode,
+		MeasurementMode: cfg.MeasurementMode,
+		Samples:         samples,
 	}
 }
 
@@ -194,44 +196,71 @@ func (r Runner) runOnce(ctx context.Context, cfg Config, index int, iteration in
 		}
 	}
 
-	netResult, err := r.execute(ctx, prepared)
+	submission, err := r.execute(ctx, prepared)
+	if prepared.Confirm != nil && prepared.Confirm.Close != nil {
+		defer prepared.Confirm.Close()
+	}
 	classification := classify(prepared, lifecycle.ResponseInput{
-		StatusCode: netResult.StatusCode,
-		Body:       netResult.Body,
+		StatusCode: submission.StatusCode,
+		Body:       submission.Body,
 		Err:        err,
 	})
-	networkNS := networkDurationNS(cfg.LatencyMode, netResult.Trace)
-	sentAt := netResult.Trace.StartedAt
+	measured := submission
+	measurementErr := err
+	submissionNS := networkDurationNS(cfg.LatencyMode, submission.Trace)
+	if err == nil && classification.OK() && cfg.MeasurementMode == MeasurementModeWSConfirmation {
+		if prepared.Confirm == nil || prepared.Confirm.Wait == nil {
+			measurementErr = fmt.Errorf("ws confirmation requested but venue did not prepare a confirmation stream")
+			classification = lifecycle.Classification{Status: lifecycle.StatusTransportError, Reason: measurementErr.Error()}
+		} else {
+			confirmCtx, cancel := context.WithTimeout(ctx, cfg.ConfirmationTimeout)
+			confirmed, confirmErr := prepared.Confirm.Wait(confirmCtx, submission)
+			cancel()
+			measured = confirmed
+			measurementErr = confirmErr
+			if confirmErr != nil {
+				classification = lifecycle.Classification{Status: lifecycle.StatusTransportError, Reason: confirmErr.Error()}
+			}
+		}
+	}
+	networkNS := networkDurationNS(cfg.LatencyMode, measured.Trace)
+	sentAt := submission.Trace.StartedAt
 	if scheduledAt.IsZero() {
 		scheduledAt = sentAt
 	}
 	completedAt := time.Now().UTC()
 	sample := Sample{
-		Venue:          r.Venue.Name(),
-		RunID:          cfg.RunID,
-		Scenario:       cfg.Scenario,
-		Transport:      transportName(prepared.Transport, netResult.Trace.Transport),
-		OrderType:      orderType(prepared.Metadata),
-		Index:          index,
-		Iteration:      iteration,
-		Warmup:         warmup,
-		BatchSize:      batchSize,
-		ScheduledAt:    scheduledAt.UTC(),
-		SentAt:         sentAt.UTC(),
-		PreparedNS:     preparedNS,
-		NetworkNS:      networkNS,
-		CorrectedNS:    correctedDurationNS(scheduledAt, completedAt),
-		StartDelayNS:   startDelayNS(scheduledAt, sentAt),
-		StatusCode:     netResult.StatusCode,
-		BytesRead:      netResult.BytesRead,
-		OK:             err == nil && classification.OK(),
-		Classification: classification,
-		Trace:          netResult.Trace,
-		Metadata:       prepared.Metadata,
-		CompletedAt:    completedAt,
+		Venue:           r.Venue.Name(),
+		RunID:           cfg.RunID,
+		Scenario:        cfg.Scenario,
+		Transport:       transportName(prepared.Transport, submission.Trace.Transport),
+		OrderType:       orderType(prepared.Metadata),
+		Index:           index,
+		Iteration:       iteration,
+		Warmup:          warmup,
+		BatchSize:       batchSize,
+		ScheduledAt:     scheduledAt.UTC(),
+		SentAt:          sentAt.UTC(),
+		PreparedNS:      preparedNS,
+		NetworkNS:       networkNS,
+		SubmissionNS:    submissionNS,
+		CorrectedNS:     correctedDurationNS(scheduledAt, completedAt),
+		StartDelayNS:    startDelayNS(scheduledAt, sentAt),
+		StatusCode:      measured.StatusCode,
+		BytesRead:       measured.BytesRead,
+		OK:              measurementErr == nil && classification.OK(),
+		Classification:  classification,
+		Trace:           measured.Trace,
+		Metadata:        prepared.Metadata,
+		MeasurementMode: cfg.MeasurementMode,
+		CompletedAt:     completedAt,
 	}
-	if err != nil {
-		sample.Error = fmt.Sprintf("request: %v", err)
+	if measurementErr != nil {
+		if err != nil {
+			sample.Error = fmt.Sprintf("request: %v", err)
+		} else {
+			sample.Error = fmt.Sprintf("confirmation: %v", measurementErr)
+		}
 	} else if !classification.OK() {
 		sample.Error = fmt.Sprintf("request: %s", classification.Status)
 		if classification.Reason != "" {

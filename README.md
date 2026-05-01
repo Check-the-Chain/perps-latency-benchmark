@@ -104,6 +104,13 @@ Summaries default to full response latency. Use TTFB instead with:
 --latency-mode ttfb
 ```
 
+The default measurement mode is submit response latency. For venues with a
+separate execution stream, use WebSocket confirmation latency:
+
+```bash
+--measurement-mode ws_confirmation
+```
+
 Compare saved result files:
 
 ```bash

@@ -48,7 +48,8 @@ func Definition() spec.Definition {
 				"tif":    "Alo",
 			},
 		},
-		Classifier: classify,
+		Classifier:   classify,
+		Confirmation: ConfirmWebSocket,
 		Docs: []string{
 			ExchangeEndpointDocsURL,
 			WebSocketDocsURL,

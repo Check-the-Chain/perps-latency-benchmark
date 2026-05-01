@@ -38,7 +38,10 @@ type Config struct {
 	Builder         payload.Builder
 	BuilderParams   map[string]any
 	Classifier      lifecycle.Classifier
+	Confirmation    ConfirmationFactory
 }
+
+type ConfirmationFactory func(context.Context, payload.Built) (*bench.Confirmation, error)
 
 type Venue struct {
 	name          string
@@ -56,6 +59,7 @@ type Venue struct {
 	builder       payload.Builder
 	builderParams map[string]any
 	classifier    lifecycle.Classifier
+	confirmation  ConfirmationFactory
 	wsClient      *netlatency.WebSocketClient
 	wsBatchClient *netlatency.WebSocketClient
 }
@@ -144,6 +148,7 @@ func New(cfg Config) (*Venue, error) {
 		builder:       cfg.Builder,
 		builderParams: cfg.BuilderParams,
 		classifier:    cfg.Classifier,
+		confirmation:  cfg.Confirmation,
 		wsClient:      newWSClientWithHeartbeat(transport, cfg.WSURL, headers, cfg.WSReadInitial, cfg.WSHeartbeat),
 		wsBatchClient: newWSClientWithHeartbeat(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers, cfg.WSReadInitial, cfg.WSHeartbeat),
 	}, nil
@@ -178,6 +183,10 @@ func (v *Venue) Prepare(ctx context.Context, scenario bench.Scenario, iteration 
 	if err != nil {
 		return bench.PreparedRequest{}, err
 	}
+	confirmation, err := v.prepareConfirmation(ctx, built)
+	if err != nil {
+		return bench.PreparedRequest{}, err
+	}
 	return bench.PreparedRequest{
 		Transport: httpTransportLabel(targetURL),
 		Request: netlatency.RequestTemplate{
@@ -187,6 +196,7 @@ func (v *Venue) Prepare(ctx context.Context, scenario bench.Scenario, iteration 
 			Body:   body,
 		},
 		Classifier: v.classifier,
+		Confirm:    confirmation,
 		Metadata: mergeMetadata(built.Metadata, map[string]any{
 			"iteration":  iteration,
 			"batch_size": batchSize,
@@ -213,18 +223,30 @@ func (v *Venue) prepareWebSocket(ctx context.Context, scenario bench.Scenario, i
 	if err := client.EnsureConnected(ctx); err != nil {
 		return bench.PreparedRequest{}, err
 	}
+	confirmation, err := v.prepareConfirmation(ctx, built)
+	if err != nil {
+		return bench.PreparedRequest{}, err
+	}
 	return bench.PreparedRequest{
 		Transport: "websocket",
 		Execute: func(ctx context.Context) (netlatency.Result, error) {
 			return client.Do(ctx, body)
 		},
 		Classifier: v.classifier,
+		Confirm:    confirmation,
 		Metadata: mergeMetadata(built.Metadata, map[string]any{
 			"iteration":  iteration,
 			"batch_size": batchSize,
 			"prebuilt":   true,
 		}),
 	}, nil
+}
+
+func (v *Venue) prepareConfirmation(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
+	if v.confirmation == nil {
+		return nil, nil
+	}
+	return v.confirmation(ctx, built)
 }
 
 func (v *Venue) Close(ctx context.Context) error {

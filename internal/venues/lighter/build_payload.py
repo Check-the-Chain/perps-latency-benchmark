@@ -72,6 +72,7 @@ async def build(req: dict[str, Any], lighter: Any) -> dict[str, Any]:
             body = urlencode({"tx_type": tx_type, "tx_info": tx_info})
             ws_body = compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_type, "tx_info": json.loads(tx_info)}})
             metadata = {"builder": "lighter-python-sdk", "orders": 1, "run_id": params.get("run_id"), "order_type": benchmark_order_type(client, params), "cleanup_orders": [cleanup_ref]}
+        metadata["confirmation"] = confirmation_metadata(client, params, api_key_index, account_index, metadata["order_type"], cleanup_orders if scenario == "batch" else [cleanup_ref])
     finally:
         await client.close()
 
@@ -105,6 +106,22 @@ def sign_order(client: Any, req: dict[str, Any], params: dict[str, Any], api_key
         "venue": "lighter",
         "market_index": market_index,
         "order_index": client_order_index,
+    }
+
+
+def confirmation_metadata(client: Any, params: dict[str, Any], api_key_index: int, account_index: int, order_type: str, orders: list[dict[str, Any]]) -> dict[str, Any]:
+    auth, error = client.create_auth_token_with_expiry(api_key_index=api_key_index)
+    if error:
+        raise SystemExit(f"Lighter auth token failed: {error}")
+    return {
+        "venue": "lighter",
+        "ws_url": params.get("ws_url", "wss://mainnet.zklighter.elliot.ai/stream"),
+        "auth_token": auth,
+        "account_index": account_index,
+        "api_key_index": api_key_index,
+        "market_index": int(params["market_index"]),
+        "order_type": order_type,
+        "order_indices": [order["order_index"] for order in orders],
     }
 
 

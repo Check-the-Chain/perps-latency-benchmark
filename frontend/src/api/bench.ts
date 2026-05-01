@@ -16,6 +16,7 @@ export interface SummaryRow {
   transport: string
   scenario: string
   order_type: string
+  measurement_mode?: string
   count: number
   ok: number
   failed: number
@@ -48,6 +49,7 @@ export interface Sample {
   batch_size: number
   prepared_ns: number
   network_ns: number
+  submission_ns?: number
   corrected_ns?: number
   start_delay_ns?: number
   status_code?: number
@@ -55,6 +57,7 @@ export interface Sample {
   ok: boolean
   error?: string
   cleanup?: CleanupResult
+  measurement_mode?: string
   completed_at: string
 }
 

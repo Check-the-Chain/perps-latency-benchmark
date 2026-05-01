@@ -30,6 +30,9 @@ class SignerClientStub:
         self.__class__.last_order = kwargs
         return 14, json.dumps({"nonce": kwargs["nonce"], "order_type": kwargs["order_type"]}), "0x1", None
 
+    def create_auth_token_with_expiry(self, **_kwargs):
+        return "auth-token", None
+
     async def close(self):
         pass
 
@@ -64,6 +67,7 @@ class LighterBuildPayloadTest(unittest.TestCase):
         ws_body = json.loads(built["ws_body"])
 
         self.assertEqual(built["metadata"]["order_type"], "market")
+        self.assertEqual(built["metadata"]["confirmation"]["order_indices"], [built["metadata"]["cleanup_orders"][0]["order_index"]])
         self.assertEqual(body["tx_type"], ["14"])
         self.assertEqual(ws_body["type"], "jsonapi/sendtx")
         self.assertEqual(SignerClientStub.last_order["order_expiry"], SignerClientStub.DEFAULT_IOC_EXPIRY)

@@ -29,19 +29,20 @@ type serveOptions struct {
 }
 
 type summaryRow struct {
-	Venue       string  `json:"venue"`
-	Transport   string  `json:"transport"`
-	Scenario    string  `json:"scenario"`
-	OrderType   string  `json:"order_type"`
-	Count       int     `json:"count"`
-	OK          int     `json:"ok"`
-	Failed      int     `json:"failed"`
-	MeanMS      float64 `json:"mean_ms"`
-	P50MS       float64 `json:"p50_ms"`
-	P95MS       float64 `json:"p95_ms"`
-	P99MS       float64 `json:"p99_ms"`
-	CleanupOK   int     `json:"cleanup_ok"`
-	CleanupFail int     `json:"cleanup_failed"`
+	Venue           string  `json:"venue"`
+	Transport       string  `json:"transport"`
+	Scenario        string  `json:"scenario"`
+	OrderType       string  `json:"order_type"`
+	MeasurementMode string  `json:"measurement_mode"`
+	Count           int     `json:"count"`
+	OK              int     `json:"ok"`
+	Failed          int     `json:"failed"`
+	MeanMS          float64 `json:"mean_ms"`
+	P50MS           float64 `json:"p50_ms"`
+	P95MS           float64 `json:"p95_ms"`
+	P99MS           float64 `json:"p99_ms"`
+	CleanupOK       int     `json:"cleanup_ok"`
+	CleanupFail     int     `json:"cleanup_failed"`
 }
 
 func newServeCommand() *cobra.Command {
@@ -168,7 +169,7 @@ func basicAuthEqual(gotUser string, gotPassword string, wantUser string, wantPas
 func summarizeGroups(samples []bench.Sample) []summaryRow {
 	groups := make(map[string][]bench.Sample)
 	for _, sample := range samples {
-		key := sample.Venue + "\x00" + sample.Transport + "\x00" + string(sample.Scenario) + "\x00" + sample.OrderType
+		key := sample.Venue + "\x00" + sample.Transport + "\x00" + string(sample.Scenario) + "\x00" + sample.OrderType + "\x00" + string(sample.MeasurementMode)
 		groups[key] = append(groups[key], sample)
 	}
 	rows := make([]summaryRow, 0, len(groups))
@@ -179,19 +180,20 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 		summary := bench.Summarize(grouped)
 		first := grouped[0]
 		rows = append(rows, summaryRow{
-			Venue:       first.Venue,
-			Transport:   first.Transport,
-			Scenario:    string(first.Scenario),
-			OrderType:   first.OrderType,
-			Count:       summary.Count,
-			OK:          summary.OK,
-			Failed:      summary.Failed,
-			MeanMS:      summary.MeanMS,
-			P50MS:       summary.P50MS,
-			P95MS:       summary.P95MS,
-			P99MS:       summary.P99MS,
-			CleanupOK:   summary.Cleanup.OK,
-			CleanupFail: summary.Cleanup.Failed,
+			Venue:           first.Venue,
+			Transport:       first.Transport,
+			Scenario:        string(first.Scenario),
+			OrderType:       first.OrderType,
+			MeasurementMode: string(first.MeasurementMode),
+			Count:           summary.Count,
+			OK:              summary.OK,
+			Failed:          summary.Failed,
+			MeanMS:          summary.MeanMS,
+			P50MS:           summary.P50MS,
+			P95MS:           summary.P95MS,
+			P99MS:           summary.P99MS,
+			CleanupOK:       summary.Cleanup.OK,
+			CleanupFail:     summary.Cleanup.Failed,
 		})
 	}
 	slices.SortFunc(rows, func(a, b summaryRow) int {

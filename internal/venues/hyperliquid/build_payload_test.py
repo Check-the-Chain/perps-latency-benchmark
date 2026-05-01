@@ -7,7 +7,7 @@ import build_payload
 class AccountStub:
     @staticmethod
     def from_key(_key):
-        return object()
+        return type("Wallet", (), {"address": "0xabc"})()
 
 
 class InfoStub:
@@ -71,6 +71,7 @@ class HyperliquidBuildPayloadTest(unittest.TestCase):
         order = body["action"]["orders"][0]
         self.assertEqual(built["metadata"]["order_type"], "market")
         self.assertEqual(built["metadata"]["time_in_force"], "Ioc")
+        self.assertEqual(built["metadata"]["confirmation"]["user"], "0xabc")
         self.assertEqual(order["limit_px"], 101000.0)
         self.assertIn('"method":"post"', built["ws_body"])
 

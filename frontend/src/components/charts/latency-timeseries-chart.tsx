@@ -44,8 +44,8 @@ export function LatencyTimeseriesChart({ samples }: { samples: Array<Sample> }) 
         <div>
           <h2 className="font-sans text-sm font-semibold">Latency Timeline</h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Accepted order responses over time by venue, transport, and order
-            type.
+            Confirmed order updates over time by venue, transport, and order
+            type when available.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -191,6 +191,7 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
       sample.transport,
       sample.scenario,
       sample.order_type || "unknown",
+      sample.measurement_mode || "ack",
     ].join(":")
     const points = grouped.get(key) ?? []
     points.push({ date, ms: nsToMs(sample.network_ns) })

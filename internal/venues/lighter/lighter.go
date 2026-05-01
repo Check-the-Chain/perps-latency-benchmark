@@ -42,7 +42,8 @@ func Definition() spec.Definition {
 				"post_only":    true,
 			},
 		},
-		Classifier: classify,
+		Classifier:   classify,
+		Confirmation: ConfirmWebSocket,
 		Docs: []string{
 			"https://apidocs.lighter.xyz/docs/get-started",
 			"https://apidocs.lighter.xyz/reference/sendtx",

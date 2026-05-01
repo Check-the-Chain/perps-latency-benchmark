@@ -44,6 +44,12 @@ func applyFlagOverrides(cmd *cobra.Command, opts *runOptions, cfg *fileConfig) {
 	if flags.Changed("latency-mode") {
 		cfg.Benchmark.LatencyMode = opts.latencyMode
 	}
+	if flags.Changed("measurement-mode") {
+		cfg.Benchmark.MeasurementMode = opts.measurementMode
+	}
+	if flags.Changed("confirmation-timeout-ms") {
+		cfg.Benchmark.ConfirmationTimeoutMS = opts.confirmationTimeoutMS
+	}
 	if flags.Changed("stop-on-error") {
 		cfg.Benchmark.StopOnError = opts.stopOnError
 	}

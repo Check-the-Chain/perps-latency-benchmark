@@ -43,6 +43,7 @@ type Definition struct {
 	Capabilities      Capabilities
 	BuilderParams     BuilderParams
 	Classifier        lifecycle.Classifier
+	Confirmation      prebuilt.ConfirmationFactory
 	Docs              []string
 	Notes             []string
 }
@@ -82,6 +83,7 @@ func (d Definition) Build(cfg Config) (bench.Venue, error) {
 	req.WSReadInitial = d.WSReadInitial
 	req.WSHeartbeat = d.WSHeartbeat.toNetLatency()
 	req.Classifier = d.Classifier
+	req.Confirmation = d.Confirmation
 
 	return prebuilt.New(req)
 }

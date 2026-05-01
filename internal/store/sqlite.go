@@ -66,9 +66,11 @@ CREATE TABLE IF NOT EXISTS samples (
   transport TEXT NOT NULL,
   order_type TEXT NOT NULL DEFAULT '',
   latency_mode TEXT NOT NULL,
+  measurement_mode TEXT NOT NULL DEFAULT '',
   iteration INTEGER NOT NULL,
   batch_size INTEGER NOT NULL,
   network_ns INTEGER NOT NULL,
+  submission_ns INTEGER NOT NULL DEFAULT 0,
   ok INTEGER NOT NULL,
   classification TEXT NOT NULL,
   classification_reason TEXT NOT NULL,
@@ -85,6 +87,12 @@ CREATE INDEX IF NOT EXISTS samples_group_idx ON samples(venue, transport, scenar
 	if err := s.ensureSamplesOrderType(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "measurement_mode", `ALTER TABLE samples ADD COLUMN measurement_mode TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "submission_ns", `ALTER TABLE samples ADD COLUMN submission_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
 	_, err = s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS samples_order_type_idx ON samples(order_type, completed_at);`)
 	return err
 }
@@ -99,10 +107,10 @@ func (s *SQLite) WriteSamples(ctx context.Context, records []SampleRecord) error
 	}
 	stmt, err := tx.PrepareContext(ctx, `
 INSERT INTO samples (
-  completed_at, venue, run_id, scenario, transport, order_type, latency_mode, iteration,
-  batch_size, network_ns, ok, classification, classification_reason,
+  completed_at, venue, run_id, scenario, transport, order_type, latency_mode, measurement_mode, iteration,
+  batch_size, network_ns, submission_ns, ok, classification, classification_reason,
   cleanup_attempted, cleanup_ok, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 	if err != nil {
 		_ = tx.Rollback()
@@ -123,9 +131,11 @@ INSERT INTO samples (
 			sample.Transport,
 			sample.OrderType,
 			string(record.LatencyMode),
+			string(sample.MeasurementMode),
 			sample.Iteration,
 			sample.BatchSize,
 			sample.NetworkNS,
+			sample.SubmissionNS,
 			boolInt(sample.OK),
 			string(sample.Classification.Status),
 			sample.Classification.Reason,
@@ -145,8 +155,8 @@ func (s *SQLite) RecentSamples(ctx context.Context, since time.Time, limit int) 
 		limit = 1000
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT completed_at, venue, run_id, scenario, transport, order_type, iteration, batch_size,
-       network_ns, ok, classification, classification_reason,
+SELECT completed_at, venue, run_id, scenario, transport, order_type, measurement_mode, iteration, batch_size,
+       network_ns, submission_ns, ok, classification, classification_reason,
        cleanup_attempted, cleanup_ok, error
 FROM samples
 WHERE completed_at >= ?
@@ -174,9 +184,11 @@ LIMIT ?
 			&scenario,
 			&sample.Transport,
 			&sample.OrderType,
+			&sample.MeasurementMode,
 			&sample.Iteration,
 			&sample.BatchSize,
 			&sample.NetworkNS,
+			&sample.SubmissionNS,
 			&ok,
 			&status,
 			&sample.Classification.Reason,
@@ -201,6 +213,10 @@ LIMIT ?
 }
 
 func (s *SQLite) ensureSamplesOrderType(ctx context.Context) error {
+	return s.ensureColumn(ctx, "order_type", `ALTER TABLE samples ADD COLUMN order_type TEXT NOT NULL DEFAULT ''`)
+}
+
+func (s *SQLite) ensureColumn(ctx context.Context, column string, statement string) error {
 	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(samples)`)
 	if err != nil {
 		return err
@@ -216,14 +232,14 @@ func (s *SQLite) ensureSamplesOrderType(ctx context.Context) error {
 		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
 			return err
 		}
-		if name == "order_type" {
+		if name == column {
 			return rows.Err()
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `ALTER TABLE samples ADD COLUMN order_type TEXT NOT NULL DEFAULT ''`)
+	_, err = s.db.ExecContext(ctx, statement)
 	return err
 }
 

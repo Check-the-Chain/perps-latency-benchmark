@@ -6,10 +6,18 @@ The benchmark currently implements the safe parts of the lifecycle:
    before live SDK-builder runs.
 2. Build/sign payloads outside the measured network window.
 3. Submit the already-built request in the measured region.
-4. Classify the venue response as accepted, rejected, rate limited, auth error,
+4. Optionally wait for a venue WebSocket order/trade confirmation and measure
+   send-to-confirmation latency instead of submit response latency.
+5. Classify the venue response as accepted, rejected, rate limited, auth error,
    nonce error, transport error, or unknown.
-5. Run optional cleanup outside the measured network window.
-6. Record classification and cleanup status in JSON results.
+6. Run optional cleanup outside the measured network window.
+7. Record classification and cleanup status in JSON results.
+
+Measurement modes:
+
+- `ack`: submit signed payload and measure until the venue returns a response.
+- `ws_confirmation`: subscribe before submission and measure until the matching
+  WebSocket order update or trade confirmation arrives.
 
 Fill-likely orders require venue-specific cleanup and inventory reconciliation
 before they can be benchmarked repeatedly. Hyperliquid and Lighter support

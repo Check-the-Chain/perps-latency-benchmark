@@ -193,9 +193,13 @@ function formatRowLabel(row: SummaryRow | null) {
     return "no matching data"
   }
 
-  return `${row.venue} / ${row.transport} / ${row.scenario} / ${orderType(row.order_type)}`
+  return `${row.venue} / ${row.transport} / ${row.scenario} / ${orderType(row.order_type)} / ${measurementLabel(row.measurement_mode)}`
 }
 
 function orderType(value: string | undefined) {
   return value && value.length > 0 ? value : "unknown"
+}
+
+function measurementLabel(value: string | undefined) {
+  return value === "ws_confirmation" ? "WS confirmation" : "Submit response"
 }
