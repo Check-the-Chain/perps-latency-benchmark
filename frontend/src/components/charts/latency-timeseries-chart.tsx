@@ -6,7 +6,7 @@ import { Group } from "@visx/group"
 import { ParentSize } from "@visx/responsive"
 import { scaleLinear, scaleTime } from "@visx/scale"
 import { LinePath } from "@visx/shape"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 
 import type { Sample } from "@/api/bench"
 import { formatLatency, formatTime, nsToMs } from "@/lib/format"
@@ -20,7 +20,16 @@ interface Series {
 
 interface Point {
   date: Date
+  label: string
   ms: number
+  submissionMs?: number
+}
+
+interface HoverPoint {
+  color: string
+  point: Point
+  x: number
+  y: number
 }
 
 const COLORS = [
@@ -71,7 +80,7 @@ export function LatencyTimeseriesChart({ samples }: { samples: Array<Sample> }) 
         ) : (
           <ParentSize>
             {({ width, height }) => (
-              <LatencySvg
+              <LatencyFrame
                 domain={domain}
                 height={height}
                 series={series}
@@ -85,7 +94,7 @@ export function LatencyTimeseriesChart({ samples }: { samples: Array<Sample> }) 
   )
 }
 
-function LatencySvg({
+function LatencyFrame({
   domain,
   height,
   series,
@@ -93,6 +102,35 @@ function LatencySvg({
 }: {
   domain: NonNullable<ReturnType<typeof getDomains>>
   height: number
+  series: Array<Series>
+  width: number
+}) {
+  const [hover, setHover] = useState<HoverPoint | null>(null)
+
+  return (
+    <div className="relative h-full w-full">
+      <LatencySvg
+        domain={domain}
+        height={height}
+        onHover={setHover}
+        series={series}
+        width={width}
+      />
+      {hover ? <PointTooltip hover={hover} width={width} /> : null}
+    </div>
+  )
+}
+
+function LatencySvg({
+  domain,
+  height,
+  onHover,
+  series,
+  width,
+}: {
+  domain: NonNullable<ReturnType<typeof getDomains>>
+  height: number
+  onHover: (hover: HoverPoint | null) => void
   series: Array<Series>
   width: number
 }) {
@@ -158,18 +196,86 @@ function LatencySvg({
               strokeWidth={1.7}
             />
             {item.points.map((point) => (
-              <circle
+              <Group
                 key={`${point.date.toISOString()}:${point.ms}`}
-                cx={xScale(point.date)}
-                cy={yScale(point.ms)}
-                r={1.8}
-                fill={item.color}
-              />
+                onPointerEnter={() =>
+                  onHover({
+                    color: item.color,
+                    point,
+                    x: MARGIN.left + xScale(point.date),
+                    y: MARGIN.top + yScale(point.ms),
+                  })
+                }
+                onPointerMove={() =>
+                  onHover({
+                    color: item.color,
+                    point,
+                    x: MARGIN.left + xScale(point.date),
+                    y: MARGIN.top + yScale(point.ms),
+                  })
+                }
+                onPointerLeave={() => onHover(null)}
+              >
+                <circle
+                  cx={xScale(point.date)}
+                  cy={yScale(point.ms)}
+                  r={7}
+                  fill="transparent"
+                />
+                <circle
+                  cx={xScale(point.date)}
+                  cy={yScale(point.ms)}
+                  r={2.4}
+                  fill={item.color}
+                />
+              </Group>
             ))}
           </Group>
         ))}
       </Group>
     </svg>
+  )
+}
+
+function PointTooltip({
+  hover,
+  width,
+}: {
+  hover: HoverPoint
+  width: number
+}) {
+  const left = Math.min(Math.max(hover.x + 10, 8), Math.max(width - 190, 8))
+  const top = Math.max(hover.y - 62, 8)
+  const submitLabel = hover.point.label.startsWith("lighter /")
+    ? "Ack latency"
+    : "Submit response"
+
+  return (
+    <div
+      className="pointer-events-none absolute z-10 w-[180px] rounded-sm border border-border/80 bg-surface-1 px-2.5 py-2 text-[10px] shadow-sm"
+      style={{ left, top }}
+    >
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: hover.color }}
+        />
+        <span className="truncate">{hover.point.label}</span>
+      </div>
+      <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+        {formatTime(hover.point.date)}
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1">
+        <span className="text-muted-foreground">WS confirmation</span>
+        <span className="font-mono text-foreground">
+          {formatLatency(hover.point.ms)}
+        </span>
+        <span className="text-muted-foreground">{submitLabel}</span>
+        <span className="font-mono text-foreground">
+          {formatLatency(hover.point.submissionMs)}
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -194,7 +300,15 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
       sample.measurement_mode || "ack",
     ].join(":")
     const points = grouped.get(key) ?? []
-    points.push({ date, ms: nsToMs(sample.network_ns) })
+    points.push({
+      date,
+      label: key.replaceAll(":", " / "),
+      ms: nsToMs(sample.network_ns),
+      submissionMs:
+        sample.submission_ns && sample.submission_ns > 0
+          ? nsToMs(sample.submission_ns)
+          : undefined,
+    })
     grouped.set(key, points)
   }
 
