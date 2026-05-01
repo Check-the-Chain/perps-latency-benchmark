@@ -152,6 +152,11 @@ func runBenchmark(ctx context.Context, cmd *cobra.Command, opts *runOptions) err
 	}
 	defer lock.Release()
 
+	rateLimits := &rateLimitState{}
+	if err := rateLimits.preflight(ctx, venueName, cfg); err != nil {
+		return err
+	}
+
 	result, err := runWithConfig(ctx, venueName, cfg)
 	if err != nil {
 		return err

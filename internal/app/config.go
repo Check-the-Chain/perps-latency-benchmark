@@ -18,6 +18,7 @@ type fileConfig struct {
 	HTTP        httpConfig             `json:"http"`
 	Risk        lifecycle.RiskConfig   `json:"risk"`
 	Cleanup     cleanupConfig          `json:"cleanup"`
+	RateLimit   rateLimitConfig        `json:"rate_limit"`
 	Mock        mockConfig             `json:"mock"`
 	Request     requestConfig          `json:"request"`
 	Venues      map[string]venueConfig `json:"venues"`
@@ -51,6 +52,15 @@ type cleanupConfig struct {
 	Mode      string `json:"mode"`
 	Scope     string `json:"scope"`
 	TimeoutMS int    `json:"timeout_ms"`
+}
+
+type rateLimitConfig struct {
+	Enabled          bool `json:"enabled"`
+	MinRemaining     int  `json:"min_remaining"`
+	ReserveWhenBelow bool `json:"reserve_when_below"`
+	ReserveTarget    int  `json:"reserve_target"`
+	MaxReserveWeight  int  `json:"max_reserve_weight"`
+	TimeoutMS         int  `json:"timeout_ms"`
 }
 
 type mockConfig struct {

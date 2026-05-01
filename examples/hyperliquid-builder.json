@@ -26,6 +26,14 @@
     "scope": "after_sample",
     "timeout_ms": 15000
   },
+  "rate_limit": {
+    "enabled": true,
+    "min_remaining": 100,
+    "reserve_when_below": true,
+    "reserve_target": 1000,
+    "max_reserve_weight": 2000,
+    "timeout_ms": 30000
+  },
   "request": {
     "transport": "https",
     "builder": {

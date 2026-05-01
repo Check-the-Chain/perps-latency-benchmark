@@ -83,6 +83,7 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 	if baseRunID == "" {
 		baseRunID = bench.NewRunID()
 	}
+	rateLimits := &rateLimitState{}
 	for chunk := 0; ; chunk++ {
 		chunkStarted := time.Now()
 		select {
@@ -96,6 +97,9 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 		chunkCfg.Benchmark.Iterations = opts.chunkIterations
 		if chunk > 0 {
 			chunkCfg.Benchmark.Warmups = 0
+		}
+		if err := rateLimits.preflight(ctx, venueName, chunkCfg); err != nil {
+			return err
 		}
 		result, err := runWithConfig(ctx, venueName, chunkCfg)
 		if err != nil {
