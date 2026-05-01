@@ -1,5 +1,6 @@
 import asyncio
 import json
+import tempfile
 import unittest
 from urllib.parse import parse_qs
 
@@ -63,6 +64,13 @@ class LighterBuildPayloadTest(unittest.TestCase):
         self.assertEqual(body["tx_type"], ["14"])
         self.assertEqual(ws_body["type"], "jsonapi/sendtx")
         self.assertEqual(SignerClientStub.last_order["order_expiry"], SignerClientStub.DEFAULT_IOC_EXPIRY)
+
+    def test_file_nonce_allocator_is_monotonic(self):
+        with tempfile.NamedTemporaryFile() as file:
+            client = SignerClientStub()
+
+            self.assertEqual(build_payload.next_nonce(client, 4, file.name), 123)
+            self.assertEqual(build_payload.next_nonce(client, 4, file.name), 124)
 
 
 if __name__ == "__main__":

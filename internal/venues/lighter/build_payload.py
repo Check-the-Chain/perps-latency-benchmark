@@ -17,6 +17,7 @@ import sys
 import time
 import asyncio
 import hashlib
+import fcntl
 from typing import Any
 from urllib.parse import urlencode
 
@@ -144,7 +145,31 @@ def order_nonce(client: Any, params: dict[str, Any], api_key_index: int, offset:
         return api_key_index, int(params["nonce_base"]) + offset
     if params.get("nonce") is not None:
         return api_key_index, int(params["nonce"])
+    state_file = params.get("nonce_state_file") or os.getenv("LIGHTER_NONCE_STATE_FILE")
+    if state_file:
+        return api_key_index, next_nonce(client, api_key_index, str(state_file))
     return client.get_api_key_nonce(api_key_index, -1)
+
+
+def next_nonce(client: Any, api_key_index: int, state_file: str) -> int:
+    directory = os.path.dirname(state_file)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(state_file, "a+", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.seek(0)
+        raw = handle.read().strip()
+        state = json.loads(raw) if raw else {}
+        key = str(api_key_index)
+        _remote_api_key_index, remote_nonce = client.get_api_key_nonce(api_key_index, -1)
+        nonce = max(int(state.get(key, -1)) + 1, int(remote_nonce))
+        state[key] = nonce
+        handle.seek(0)
+        handle.truncate()
+        json.dump(state, handle, separators=(",", ":"))
+        handle.flush()
+        os.fsync(handle.fileno())
+        return nonce
 
 
 def env_or_param(params: dict[str, Any], key: str, env_key: str) -> str:

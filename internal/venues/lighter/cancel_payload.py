@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
-from build_payload import order_index
+from build_payload import next_nonce, order_index
 
 
 def main() -> int:
@@ -311,6 +311,9 @@ def cleanup_nonce(client: Any, params: dict[str, Any], api_key_index: int, offse
         return api_key_index, int(params["cleanup_nonce_base"]) + offset
     if params.get("cleanup_nonce") is not None:
         return api_key_index, int(params["cleanup_nonce"])
+    state_file = params.get("nonce_state_file") or os.getenv("LIGHTER_NONCE_STATE_FILE")
+    if state_file:
+        return api_key_index, next_nonce(client, api_key_index, str(state_file))
     return client.get_api_key_nonce(api_key_index, -1)
 
 
