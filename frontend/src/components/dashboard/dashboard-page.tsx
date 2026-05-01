@@ -26,6 +26,7 @@ import {
   formatPercent,
   formatTime,
 } from "@/lib/format"
+import { confirmP50, confirmP95 } from "@/lib/latency-metric"
 
 export function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
@@ -100,13 +101,13 @@ export function DashboardPage() {
       <section className="grid gap-3 md:grid-cols-3">
         <MetricCard
           label="Fastest confirmation p50"
-          value={formatLatency(stats.fastestP50?.p50_ms)}
+          value={formatLatency(stats.fastestP50 ? confirmP50(stats.fastestP50) : undefined)}
           detail={formatRowLabel(stats.fastestP50)}
           tone="good"
         />
         <MetricCard
           label="Fastest confirmation p95"
-          value={formatLatency(stats.fastestP95?.p95_ms)}
+          value={formatLatency(stats.fastestP95 ? confirmP95(stats.fastestP95) : undefined)}
           detail={formatRowLabel(stats.fastestP95)}
           tone="good"
         />
@@ -161,8 +162,8 @@ function getStats(rows: Array<SummaryRow>) {
   return {
     failed,
     failureRate: measurementCount > 0 ? failed / measurementCount : 0,
-    fastestP50: minBy(rows, (row) => row.p50_ms),
-    fastestP95: minBy(rows, (row) => row.p95_ms),
+    fastestP50: minBy(rows, (row) => confirmP50(row) ?? Number.NaN),
+    fastestP95: minBy(rows, (row) => confirmP95(row) ?? Number.NaN),
     measurementCount,
   }
 }

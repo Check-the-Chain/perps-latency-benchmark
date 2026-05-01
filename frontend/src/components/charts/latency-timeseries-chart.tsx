@@ -9,7 +9,12 @@ import { LinePath } from "@visx/shape"
 import { useMemo, useState } from "react"
 
 import type { Sample } from "@/api/bench"
-import { formatLatency, formatTime, nsToMs } from "@/lib/format"
+import { formatLatency, formatTime } from "@/lib/format"
+import {
+  confirmSampleMs,
+  secondaryLabel,
+  secondarySampleMs,
+} from "@/lib/latency-metric"
 
 interface Series {
   color: string
@@ -22,7 +27,8 @@ interface Point {
   date: Date
   label: string
   ms: number
-  submissionMs?: number
+  secondaryLabel: string
+  secondaryMs?: number
 }
 
 interface HoverPoint {
@@ -53,8 +59,7 @@ export function LatencyTimeseriesChart({ samples }: { samples: Array<Sample> }) 
         <div>
           <h2 className="font-sans text-sm font-semibold">Latency Timeline</h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Confirmed order updates over time by venue, transport, and order
-            type when available.
+            Confirm latency over time by venue, transport, and order type.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -246,10 +251,6 @@ function PointTooltip({
 }) {
   const left = Math.min(Math.max(hover.x + 10, 8), Math.max(width - 190, 8))
   const top = Math.max(hover.y - 62, 8)
-  const submitLabel = hover.point.label.startsWith("lighter /")
-    ? "Ack latency"
-    : "Submit response"
-
   return (
     <div
       className="pointer-events-none absolute z-10 w-[180px] rounded-sm border border-border/80 bg-surface-1 px-2.5 py-2 text-[10px] shadow-sm"
@@ -266,13 +267,13 @@ function PointTooltip({
         {formatTime(hover.point.date)}
       </div>
       <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1">
-        <span className="text-muted-foreground">WS confirmation</span>
+        <span className="text-muted-foreground">Confirm</span>
         <span className="font-mono text-foreground">
           {formatLatency(hover.point.ms)}
         </span>
-        <span className="text-muted-foreground">{submitLabel}</span>
+        <span className="text-muted-foreground">{hover.point.secondaryLabel}</span>
         <span className="font-mono text-foreground">
-          {formatLatency(hover.point.submissionMs)}
+          {formatLatency(hover.point.secondaryMs)}
         </span>
       </div>
     </div>
@@ -303,11 +304,9 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
     points.push({
       date,
       label: key.replaceAll(":", " / "),
-      ms: nsToMs(sample.network_ns),
-      submissionMs:
-        sample.submission_ns && sample.submission_ns > 0
-          ? nsToMs(sample.submission_ns)
-          : undefined,
+      ms: confirmSampleMs(sample),
+      secondaryLabel: secondaryLabel(sample.venue),
+      secondaryMs: secondarySampleMs(sample),
     })
     grouped.set(key, points)
   }

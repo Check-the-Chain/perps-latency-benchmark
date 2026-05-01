@@ -1,5 +1,6 @@
 import type { SummaryRow } from "@/api/bench"
 import { formatCount, formatLatency, formatPercent } from "@/lib/format"
+import { confirmP50, confirmP95 } from "@/lib/latency-metric"
 
 export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
   return (
@@ -20,14 +21,13 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
               <HeaderCell align="right">OK</HeaderCell>
               <HeaderCell align="right">Confirm p50</HeaderCell>
               <HeaderCell align="right">Confirm p95</HeaderCell>
-              <HeaderCell align="right">Submit p50</HeaderCell>
               <HeaderCell align="right">Errors</HeaderCell>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-3 py-8 text-muted-foreground">
+                <td colSpan={10} className="px-3 py-8 text-muted-foreground">
                   No latency data is available for the selected filters.
                 </td>
               </tr>
@@ -44,11 +44,8 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
                   <BodyCell>{measurementLabel(row.measurement_mode)}</BodyCell>
                   <BodyCell align="right">{formatCount(row.count)}</BodyCell>
                   <BodyCell align="right">{formatCount(row.ok)}</BodyCell>
-                  <BodyCell align="right">{formatLatency(row.p50_ms)}</BodyCell>
-                  <BodyCell align="right">{formatLatency(row.p95_ms)}</BodyCell>
-                  <BodyCell align="right">
-                    {formatLatency(row.submission_p50_ms)}
-                  </BodyCell>
+                  <BodyCell align="right">{formatLatency(confirmP50(row))}</BodyCell>
+                  <BodyCell align="right">{formatLatency(confirmP95(row))}</BodyCell>
                   <BodyCell align="right">
                     {formatPercent(row.failed / Math.max(row.count, 1))}
                   </BodyCell>

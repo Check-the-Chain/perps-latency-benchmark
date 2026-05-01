@@ -1,11 +1,11 @@
 const METHODOLOGIES = [
   {
     venue: "Hyperliquid",
-    text: "Post-only BTC order. Primary latency is measured from completed order-submit write to the matching private orderUpdates WebSocket event for the client order ID. Submit-response latency is shown separately; Hyperliquid's response includes the order result, such as resting or filled.",
+    text: "Post-only BTC order. Confirm latency is measured from completed order-submit write to Hyperliquid's synchronous order response, which includes the order result such as resting, filled, or rejected. The matching private WebSocket update is shown on hover.",
   },
   {
     venue: "Lighter",
-    text: "Post-only BTC order using the maker-only API key. Primary latency is measured from completed sendTx write to the matching private account order/trade WebSocket event for the client order index. Submit-response latency is shown separately; Lighter's sendTx response is a queue response before execution.",
+    text: "Post-only BTC order using the maker-only API key. Confirm latency is measured from completed sendTx write to the matching private account order/trade WebSocket event for the client order index. The sendTx queue ack is shown on hover.",
   },
 ]
 
