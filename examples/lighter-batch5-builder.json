@@ -1,0 +1,55 @@
+{
+  "venue": "lighter",
+  "benchmark": {
+    "scenario": "batch",
+    "iterations": 1,
+    "warmups": 0,
+    "batch_size": 5,
+    "rate_per_second": 0.0033333333333333335,
+    "max_in_flight": 1,
+    "latency_mode": "total",
+    "measurement_mode": "ws_confirmation",
+    "confirmation_timeout_ms": 10000
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "cleanup": {
+    "enabled": true,
+    "mode": "best_effort",
+    "scope": "after_sample",
+    "timeout_ms": 15000
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "lighter-sdk",
+        "python",
+        "internal/venues/lighter/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "symbol": "BTC",
+        "market_index": 1,
+        "base_amount": 100,
+        "price": 750000,
+        "price_step": 10,
+        "side": "buy",
+        "api_key_role": "maker",
+        "post_only": true,
+        "cleanup_all_open_orders": true
+      }
+    }
+  }
+}

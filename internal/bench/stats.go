@@ -1,0 +1,183 @@
+package bench
+
+import (
+	"fmt"
+	"strings"
+
+	hdrhistogram "github.com/HdrHistogram/hdrhistogram-go"
+)
+
+type Summary struct {
+	Count           int            `json:"count"`
+	OK              int            `json:"ok"`
+	Failed          int            `json:"failed"`
+	Cleanup         CleanupSummary `json:"cleanup"`
+	MinMS           float64        `json:"min_ms"`
+	MeanMS          float64        `json:"mean_ms"`
+	P50MS           float64        `json:"p50_ms"`
+	P95MS           float64        `json:"p95_ms"`
+	P99MS           float64        `json:"p99_ms"`
+	MaxMS           float64        `json:"max_ms"`
+	RawMeanMS       float64        `json:"raw_mean_ms,omitempty"`
+	RawP50MS        float64        `json:"raw_p50_ms,omitempty"`
+	RawP95MS        float64        `json:"raw_p95_ms,omitempty"`
+	RawP99MS        float64        `json:"raw_p99_ms,omitempty"`
+	SpeedBumpMeanMS float64        `json:"speed_bump_mean_ms,omitempty"`
+	SpeedBumpSource string         `json:"speed_bump_source,omitempty"`
+	SubmissionP50MS float64        `json:"submission_p50_ms,omitempty"`
+	SubmissionP95MS float64        `json:"submission_p95_ms,omitempty"`
+	SubmissionP99MS float64        `json:"submission_p99_ms,omitempty"`
+}
+
+type CleanupSummary struct {
+	Attempted int `json:"attempted"`
+	OK        int `json:"ok"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
+}
+
+func Summarize(samples []Sample) Summary {
+	hist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
+	rawHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
+	submissionHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
+	var totalNS int64
+	var rawTotalNS int64
+	var speedBumpTotalNS int64
+	var ok int
+	var failed int
+	var cleanup CleanupSummary
+
+	for _, sample := range samples {
+		if sample.Warmup {
+			continue
+		}
+		if sample.Cleanup != nil {
+			if sample.Cleanup.Attempted {
+				cleanup.Attempted++
+				if sample.Cleanup.OK {
+					cleanup.OK++
+				} else {
+					cleanup.Failed++
+				}
+			} else {
+				cleanup.Skipped++
+			}
+		}
+		if !sample.OK {
+			failed++
+			continue
+		}
+		value := adjustedNetworkNS(sample)
+		if value < 1 {
+			value = 1
+		}
+		_ = hist.RecordValue(value)
+		rawValue := rawNetworkNS(sample)
+		if rawValue < 1 {
+			rawValue = 1
+		}
+		_ = rawHist.RecordValue(rawValue)
+		if sample.SubmissionNS > 0 {
+			submissionNS := sample.SubmissionNS
+			if submissionNS < 1 {
+				submissionNS = 1
+			}
+			_ = submissionHist.RecordValue(submissionNS)
+		}
+		totalNS += value
+		rawTotalNS += rawValue
+		speedBumpTotalNS += sample.SpeedBumpNS
+		ok++
+	}
+
+	summary := Summary{Count: ok + failed, OK: ok, Failed: failed, Cleanup: cleanup}
+	if ok == 0 {
+		return summary
+	}
+
+	summary.MinMS = nsToMS(hist.Min())
+	summary.MeanMS = nsToMS(totalNS / int64(ok))
+	summary.P50MS = nsToMS(hist.ValueAtQuantile(50))
+	summary.P95MS = nsToMS(hist.ValueAtQuantile(95))
+	summary.P99MS = nsToMS(hist.ValueAtQuantile(99))
+	summary.MaxMS = nsToMS(hist.Max())
+	summary.RawMeanMS = nsToMS(rawTotalNS / int64(ok))
+	summary.RawP50MS = nsToMS(rawHist.ValueAtQuantile(50))
+	summary.RawP95MS = nsToMS(rawHist.ValueAtQuantile(95))
+	summary.RawP99MS = nsToMS(rawHist.ValueAtQuantile(99))
+	summary.SpeedBumpMeanMS = nsToMS(speedBumpTotalNS / int64(ok))
+	summary.SpeedBumpSource = speedBumpSource(samples)
+	if submissionHist.TotalCount() > 0 {
+		summary.SubmissionP50MS = nsToMS(submissionHist.ValueAtQuantile(50))
+		summary.SubmissionP95MS = nsToMS(submissionHist.ValueAtQuantile(95))
+		summary.SubmissionP99MS = nsToMS(submissionHist.ValueAtQuantile(99))
+	}
+	return summary
+}
+
+func speedBumpSource(samples []Sample) string {
+	for _, sample := range samples {
+		if sample.Warmup || !sample.OK {
+			continue
+		}
+		if source := strings.TrimSpace(sample.SpeedBumpSource); source != "" {
+			return source
+		}
+	}
+	return ""
+}
+
+func FormatSummary(result Result) string {
+	summary := Summarize(result.Samples)
+	lines := []string{
+		fmt.Sprintf(
+			"venue=%s run_id=%s scenario=%s latency_mode=%s count=%d ok=%d failed=%d",
+			result.Venue,
+			result.RunID,
+			result.Scenario,
+			result.LatencyMode,
+			summary.Count,
+			summary.OK,
+			summary.Failed,
+		),
+	}
+	if summary.OK > 0 {
+		lines = append(lines, fmt.Sprintf(
+			"latency_ms min=%.3f mean=%.3f p50=%.3f p95=%.3f p99=%.3f max=%.3f",
+			summary.MinMS,
+			summary.MeanMS,
+			summary.P50MS,
+			summary.P95MS,
+			summary.P99MS,
+			summary.MaxMS,
+		))
+	}
+	if summary.Cleanup.Attempted > 0 || summary.Cleanup.Skipped > 0 {
+		lines = append(lines, fmt.Sprintf(
+			"cleanup attempted=%d ok=%d failed=%d skipped=%d",
+			summary.Cleanup.Attempted,
+			summary.Cleanup.OK,
+			summary.Cleanup.Failed,
+			summary.Cleanup.Skipped,
+		))
+	}
+	if result.StartupCleanup != nil {
+		lines = append(lines, fmt.Sprintf("startup_cleanup attempted=%t ok=%t", result.StartupCleanup.Attempted, result.StartupCleanup.OK))
+	}
+	if result.Reconciliation != nil {
+		lines = append(lines, fmt.Sprintf("reconciliation attempted=%t ok=%t", result.Reconciliation.Attempted, result.Reconciliation.OK))
+	}
+	for _, sample := range result.Samples {
+		if sample.Error != "" {
+			lines = append(lines, "error="+sample.Error)
+			if len(lines) >= 5 {
+				break
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func nsToMS(value int64) float64 {
+	return float64(value) / 1_000_000
+}

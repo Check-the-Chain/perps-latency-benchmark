@@ -1,0 +1,36 @@
+.env
+.env.*
+!.env.example
+!.env.*.example
+.dev.vars*
+api.env
+*.pem
+*.key
+*.p8
+/secrets/
+results/
+data/
+logs/
+*.db
+*.db-*
+*.local.json
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+coverage.out
+bin/
+dist/
+node_modules/
+.tanstack/
+.wrangler/
+*.tsbuildinfo
+.playwright-mcp/
+tmp
+
+# Local agent/skill workspace state.
+.agents/
+skills-lock.json
+
+# Local visual QA screenshots.
+taker-cost-*.png

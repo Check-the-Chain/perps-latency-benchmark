@@ -1,0 +1,65 @@
+{
+  "venue": "extended",
+  "benchmark": {
+    "scenario": "batch",
+    "iterations": 1,
+    "warmups": 0,
+    "batch_size": 5,
+    "rate_per_second": 0.0033333333333333335,
+    "max_in_flight": 1,
+    "latency_mode": "total",
+    "measurement_mode": "ws_confirmation",
+    "confirmation_timeout_ms": 10000
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "cleanup": {
+    "enabled": true,
+    "mode": "best_effort",
+    "scope": "after_sample",
+    "timeout_ms": 15000
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--python",
+        "3.13",
+        "--with",
+        "x10-python-trading-starknet",
+        "python",
+        "internal/venues/extended/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "env": "mainnet",
+        "market": "BTC-USD",
+        "side": "buy",
+        "size": "0.001",
+        "price": "75000",
+        "price_step": "10",
+        "time_in_force": "GTT",
+        "post_only": true,
+        "fee": "0.0002",
+        "l2_config": {
+          "type": "STARKX",
+          "synthetic_id": "0x4254432d3600000000000000000000",
+          "synthetic_resolution": 1000000,
+          "collateral_id": "0x1",
+          "collateral_resolution": 1000000
+        },
+        "cleanup_all_open_orders": true
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "venue": "variational_omni",
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 3,
+    "warmups": 1,
+    "batch_size": 1,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total",
+    "measurement_mode": "ack"
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 256,
+    "max_idle_conns_per_host": 256,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": false
+  },
+  "cleanup": {
+    "enabled": false
+  },
+  "request": {
+    "transport": "https",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "python3",
+        "internal/venues/variational_omni/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "action": "create_rfq",
+        "instrument_type": "perpetual_future",
+        "underlying": "BTC",
+        "settlement_asset": "USDC",
+        "side": "buy",
+        "qty": "0.001",
+        "expires_after_seconds": 30,
+        "target_companies": []
+      }
+    }
+  }
+}
