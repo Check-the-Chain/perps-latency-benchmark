@@ -8,7 +8,14 @@ import { ParentSize } from "@visx/responsive"
 import { scaleLinear, scaleLog, scaleTime } from "@visx/scale"
 import { LinePath } from "@visx/shape"
 import { TooltipWithBounds, useTooltip } from "@visx/tooltip"
-import { type PointerEvent, useEffect, useId, useMemo, useState } from "react"
+import {
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react"
 
 import type { Sample } from "@/api/bench"
 import { samplePlotDate } from "@/lib/sample-time"
@@ -71,6 +78,7 @@ export function LatencyTimeseriesChart({
   title = "Latency Timeline",
   description = "Confirmation latency over time by venue, transport, and order type.",
   emptyMessage = "No latency data is available for the selected filters.",
+  headerActions,
   valueForSample = confirmSampleMs,
   valueLabel = "Latency",
 }: {
@@ -83,6 +91,7 @@ export function LatencyTimeseriesChart({
   title?: string
   description?: string
   emptyMessage?: string
+  headerActions?: ReactNode
   valueForSample?: (sample: Sample) => number | undefined
   valueLabel?: string
 }) {
@@ -117,6 +126,7 @@ export function LatencyTimeseriesChart({
             </p>
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {headerActions}
             <DisplayModeToggle
               value={displayMode}
               onChange={setDisplayMode}
