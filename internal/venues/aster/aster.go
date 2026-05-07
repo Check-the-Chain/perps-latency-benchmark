@@ -96,8 +96,9 @@ func Definition() spec.Definition {
 				}, true
 			},
 		},
-		Classifier:   Classify,
-		Confirmation: ConfirmWebSocket,
+		Classifier:         Classify,
+		Confirmation:       ConfirmWebSocket,
+		CancelConfirmation: ConfirmCancelWebSocket,
 		Docs: []string{
 			"https://asterdex.github.io/aster-api-website/futures-v3/general-info/",
 			"https://asterdex.github.io/aster-api-website/futures-v3/account%26trades/",

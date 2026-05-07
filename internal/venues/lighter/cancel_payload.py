@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from cleanup_common import cleanup_orders_for_venue, cleanup_result, result_orders_for_venue
-from build_payload import env_or_param, next_nonce, order_index
+from build_payload import compact_json, env_or_param, next_nonce, order_index
 
 
 def main() -> int:
@@ -104,17 +104,37 @@ async def cancel_orders(client: Any, orders: list[dict[str, Any]], builder_param
         tx_infos.append(tx_info)
 
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    cancel_confirmation = cancel_confirmation_metadata(client, builder_params, api_key_index, orders)
     if len(tx_types) == 1:
         return {
             "headers": headers,
             "body": urlencode({"tx_type": tx_types[0], "tx_info": tx_infos[0]}),
-            "metadata": {"cleanup": "cancel_order", "orders": 1, "reconciliation": reconciliation},
+            "ws_body": compact_json({"type": "jsonapi/sendtx", "data": {"tx_type": tx_types[0], "tx_info": json.loads(tx_infos[0])}}),
+            "metadata": {"cleanup": "cancel_order", "orders": 1, "cancel_confirmation": cancel_confirmation, "reconciliation": reconciliation},
         }
     return {
         "url": builder_params.get("cancel_batch_url", "https://mainnet.zklighter.elliot.ai/api/v1/sendTxBatch"),
         "headers": headers,
         "body": urlencode({"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}),
-        "metadata": {"cleanup": "cancel_order", "orders": len(tx_types), "reconciliation": reconciliation},
+        "ws_body": compact_json({"type": "jsonapi/sendtxbatch", "data": {"tx_types": json.dumps(tx_types), "tx_infos": json.dumps(tx_infos)}}),
+        "metadata": {"cleanup": "cancel_order", "orders": len(tx_types), "cancel_confirmation": cancel_confirmation, "reconciliation": reconciliation},
+    }
+
+
+def cancel_confirmation_metadata(client: Any, params: dict[str, Any], api_key_index: int, orders: list[dict[str, Any]]) -> dict[str, Any]:
+    if params.get("cancel_confirmation") is False:
+        return {}
+    auth, error = client.create_auth_token_with_expiry(api_key_index=api_key_index)
+    if error:
+        raise SystemExit(f"Lighter auth token failed: {error}")
+    return {
+        "venue": "lighter",
+        "ws_url": params.get("ws_url", "wss://mainnet.zklighter.elliot.ai/stream"),
+        "auth_token": auth,
+        "account_index": int(env_or_param(params, "account_index", "LIGHTER_ACCOUNT_INDEX")),
+        "api_key_index": api_key_index,
+        "market_index": int(params["market_index"]),
+        "order_indices": [order["order_index"] for order in orders],
     }
 
 

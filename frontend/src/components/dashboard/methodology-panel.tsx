@@ -9,7 +9,7 @@ const METHODOLOGIES = [
   },
   {
     venue: "Extended",
-    text: "Post-only BTC order. Confirm latency is measured from completed order-submit write to the matching private account order/trade WebSocket event for the external order ID. Batch view sends five single-order requests concurrently because no native batch endpoint is documented.",
+    text: "Post-only BTC order. Confirm latency is measured from completed order-submit write to the matching private account order/trade WebSocket event for the external order ID. Extended taker latency is adjusted by its 150 ms order-entry speed bump. Batch view sends five single-order requests concurrently because no native batch endpoint is documented.",
   },
   {
     venue: "Aster",

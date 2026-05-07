@@ -25,6 +25,8 @@ class MarketModelStub:
 class EnumStub:
     BUY = "BUY"
     LIMIT = "LIMIT"
+    MARKET = "MARKET"
+    IOC = "IOC"
     GTT = "GTT"
     ACCOUNT = "ACCOUNT"
 
@@ -116,8 +118,47 @@ class ExtendedPayloadHelpersTest(unittest.TestCase):
         bodies = [build_payload.json.loads(request["body"]) for request in requests]
         self.assertEqual([body["price"] for body in bodies], ["75000", "74990", "74980"])
         self.assertEqual([body["nonce"] for body in bodies], [102, 103, 104])
+        self.assertEqual(built["metadata"]["speed_bump_ms"], 0)
+        self.assertEqual(built["metadata"]["speed_bump_ns"], 0)
         self.assertEqual(built["metadata"]["native_batch_endpoint"], False)
         self.assertEqual(len(built["metadata"]["confirmation"]["external_ids"]), 3)
+
+    def test_taker_build_sets_speed_bump(self):
+        built = build_payload.build(
+            {
+                "scenario": "single",
+                "iteration": 2,
+                "params": {
+                    "vault": "1",
+                    "private_key": "private",
+                    "public_key": "public",
+                    "api_key": "api",
+                    "market": "BTC-USD",
+                    "market_model": {"name": "BTC-USD"},
+                    "size": "0.001",
+                    "price": "75000",
+                    "order_type": "market",
+                    "time_in_force": "IOC",
+                    "post_only": False,
+                    "nonce_base": 100,
+                    "run_id": "run-a",
+                },
+            },
+            ConfigStub,
+            ConfigStub,
+            object,
+            AccountStub,
+            MarketModelStub,
+            EnumStub,
+            EnumStub,
+            EnumStub,
+            EnumStub,
+            create_order_object_stub,
+        )
+
+        self.assertEqual(built["metadata"]["order_type"], "market")
+        self.assertEqual(built["metadata"]["speed_bump_ms"], 150)
+        self.assertEqual(built["metadata"]["speed_bump_ns"], 150_000_000)
 
 
 if __name__ == "__main__":

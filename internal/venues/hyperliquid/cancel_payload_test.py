@@ -5,6 +5,30 @@ import cancel_payload
 
 
 class HyperliquidCancelPayloadTest(unittest.TestCase):
+    def test_cancel_payload_includes_websocket_post_request(self):
+        class Account:
+            @staticmethod
+            def from_key(_key):
+                class Wallet:
+                    address = "0xabc"
+
+                return Wallet()
+
+        def sign_l1_action(*_args):
+            return {"r": "0x1", "s": "0x2", "v": 27}
+
+        built = cancel_payload.cancel_payload(
+            [{"asset": 0, "cloid": "0xabc"}],
+            {"secret_key": "0x" + "1" * 64, "cleanup_nonce": 123},
+            Account,
+            "https://api.hyperliquid.xyz",
+            sign_l1_action,
+        )
+
+        decoded = cancel_payload.json.loads(built["ws_body"])
+        self.assertEqual(decoded["method"], "post")
+        self.assertEqual(decoded["request"]["payload"]["action"]["type"], "cancelByCloid")
+
     def test_neutralize_price_uses_valid_wire_precision(self):
         self.assertEqual(
             cancel_payload.neutralize_price(

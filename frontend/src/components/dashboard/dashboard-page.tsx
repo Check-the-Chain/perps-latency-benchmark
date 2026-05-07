@@ -182,6 +182,7 @@ export function DashboardPage() {
         />
       </section>
 
+      <LatencyTable rows={filteredSummaries} />
       <InfrastructurePanel />
       <LatencyTimeseriesChart
         title="Post-only Confirmation"
@@ -220,7 +221,6 @@ export function DashboardPage() {
         }
       />
       <TakerCostPanel samples={takerSamples} />
-      <LatencyTable rows={filteredSummaries} />
       <MethodologyPanel />
     </div>
   )

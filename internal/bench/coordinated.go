@@ -3,8 +3,6 @@ package bench
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -205,26 +203,24 @@ func submitPreparedCoordinated(ctx context.Context, prepared []preparedCycleItem
 	ready.Add(len(prepared))
 	start := make(chan struct{})
 	results := make(chan sampleCycleResult, len(prepared))
+	timing := coordinatedTiming{
+		Target:      cycle.ScheduledAt,
+		SpinLead:    cycle.SpinLead,
+		LockThreads: cycle.LockThreads,
+	}
 
 	for _, index := range randomizedOrder(len(prepared)) {
 		preparedItem := prepared[index]
 		go func() {
-			if cycle.LockThreads {
-				runtime.LockOSThread()
-				defer runtime.UnlockOSThread()
-			}
-			ready.Done()
-			<-start
-			waitUntil(ctx, cycle.ScheduledAt, cycle.SpinLead)
-			results <- sampleCycleResult{
-				index:  preparedItem.index,
-				sample: runPreparedCycleItem(ctx, preparedItem, cycle),
-			}
+			timing.run(ctx, start, &ready, func() {
+				results <- sampleCycleResult{
+					index:  preparedItem.index,
+					sample: runPreparedCycleItem(ctx, preparedItem, cycle),
+				}
+			})
 		}()
 	}
-	ready.Wait()
-	waitUntil(ctx, cycle.ScheduledAt.Add(-cycle.SpinLead), 0)
-	close(start)
+	timing.release(ctx, &ready, start)
 
 	for range prepared {
 		result := <-results
@@ -320,23 +316,21 @@ func applyCoordinatedCleanup(ctx context.Context, items []CoordinatedItem, sampl
 	results := make(chan cleanupCycleResult, len(cleanupItems))
 	spinLead, lockThreads := cleanupCoordinationSettings(cleanupItems)
 	target := time.Now().Add(maxDuration(2*time.Millisecond, spinLead))
+	timing := coordinatedTiming{
+		Target:      target,
+		SpinLead:    spinLead,
+		LockThreads: lockThreads,
+	}
 	for _, index := range randomizedOrder(len(cleanupItems)) {
 		cleanupItem := cleanupItems[index]
 		go func() {
-			if lockThreads {
-				runtime.LockOSThread()
-				defer runtime.UnlockOSThread()
-			}
-			ready.Done()
-			<-start
-			waitUntil(ctx, target, spinLead)
-			cleanup := executePreparedCleanup(ctx, cleanupItem, target)
-			results <- cleanupCycleResult{index: cleanupItem.index, cleanup: &cleanup}
+			timing.run(ctx, start, &ready, func() {
+				cleanup := executePreparedCleanup(ctx, cleanupItem, target)
+				results <- cleanupCycleResult{index: cleanupItem.index, cleanup: &cleanup}
+			})
 		}()
 	}
-	ready.Wait()
-	waitUntil(ctx, target.Add(-spinLead), 0)
-	close(start)
+	timing.release(ctx, &ready, start)
 
 	for range cleanupItems {
 		result := <-results
@@ -520,58 +514,4 @@ func cleanupCoordinationSettings(items []cleanupCycleItem) (time.Duration, bool)
 		}
 	}
 	return spinLead, lockThreads
-}
-
-func randomizedOrder(n int) []int {
-	if n <= 0 {
-		return nil
-	}
-	if n == 1 {
-		return []int{0}
-	}
-	return rand.Perm(n)
-}
-
-func waitUntil(ctx context.Context, target time.Time, spinLead time.Duration) {
-	if target.IsZero() {
-		return
-	}
-	if spinLead < 0 {
-		spinLead = 0
-	}
-	sleepTarget := target.Add(-spinLead)
-	delay := time.Until(sleepTarget)
-	if delay <= 0 {
-		spinUntil(ctx, target)
-		return
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-	case <-timer.C:
-		spinUntil(ctx, target)
-	}
-}
-
-func spinUntil(ctx context.Context, target time.Time) {
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		remaining := time.Until(target)
-		if remaining <= 0 {
-			return
-		}
-		if remaining > 100*time.Microsecond {
-			runtime.Gosched()
-		}
-	}
-}
-
-func maxDuration(a time.Duration, b time.Duration) time.Duration {
-	if a > b {
-		return a
-	}
-	return b
 }

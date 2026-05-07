@@ -115,3 +115,21 @@ func TestMatchAsterConfirmationRejectsTerminalFailure(t *testing.T) {
 		t.Fatal("expected no successful match")
 	}
 }
+
+func TestMatchAsterCancelConfirmationWaitsForAllOrders(t *testing.T) {
+	remaining := map[string]struct{}{"pb_123": {}, "pb_124": {}}
+	first := matchAsterCancelConfirmation(map[string]any{
+		"e": "ORDER_TRADE_UPDATE",
+		"o": map[string]any{"c": "pb_123", "X": "CANCELED", "x": "CANCELED"},
+	}, remaining)
+	if first {
+		t.Fatal("expected first cancel update to leave one order outstanding")
+	}
+	second := matchAsterCancelConfirmation(map[string]any{
+		"e": "ORDER_TRADE_UPDATE",
+		"o": map[string]any{"C": "pb_124", "X": "CANCELLED", "x": "CANCELLED"},
+	}, remaining)
+	if !second {
+		t.Fatalf("expected all cancels confirmed, remaining = %#v", remaining)
+	}
+}

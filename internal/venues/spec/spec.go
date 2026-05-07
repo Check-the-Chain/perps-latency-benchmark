@@ -2,6 +2,7 @@ package spec
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -15,6 +16,7 @@ import (
 	"perps-latency-benchmark/internal/lifecycle"
 	"perps-latency-benchmark/internal/names"
 	"perps-latency-benchmark/internal/netlatency"
+	"perps-latency-benchmark/internal/payload"
 	"perps-latency-benchmark/internal/venues/prebuilt"
 )
 
@@ -87,29 +89,30 @@ type RunLockTarget struct {
 }
 
 type Definition struct {
-	Name              string
-	Aliases           []string
-	DefaultBaseURL    string
-	DefaultHTTPPath   string
-	DefaultBatchPath  string
-	DefaultHTTPURL    string
-	DefaultBatchURL   string
-	DefaultWSURL      string
-	DefaultWSBatchURL string
-	WSReadInitial     bool
-	WSHeartbeat       WebSocketHeartbeat
-	Capabilities      Capabilities
-	BuilderParams     BuilderParams
-	CleanupCommand    CleanupCommand
-	CostCommand       CostCommand
-	RateLimitCommand  RateLimitCommand
-	BookTop           BookTop
-	ExpectedFill      ExpectedFill
-	RunLock           RunLock
-	Classifier        lifecycle.Classifier
-	Confirmation      prebuilt.ConfirmationFactory
-	Docs              []string
-	Notes             []string
+	Name               string
+	Aliases            []string
+	DefaultBaseURL     string
+	DefaultHTTPPath    string
+	DefaultBatchPath   string
+	DefaultHTTPURL     string
+	DefaultBatchURL    string
+	DefaultWSURL       string
+	DefaultWSBatchURL  string
+	WSReadInitial      bool
+	WSHeartbeat        WebSocketHeartbeat
+	Capabilities       Capabilities
+	BuilderParams      BuilderParams
+	CleanupCommand     CleanupCommand
+	CostCommand        CostCommand
+	RateLimitCommand   RateLimitCommand
+	BookTop            BookTop
+	ExpectedFill       ExpectedFill
+	RunLock            RunLock
+	Classifier         lifecycle.Classifier
+	Confirmation       prebuilt.ConfirmationFactory
+	CancelConfirmation func(context.Context, payload.Built) (*bench.Confirmation, error)
+	Docs               []string
+	Notes              []string
 }
 
 type WebSocketHeartbeat struct {

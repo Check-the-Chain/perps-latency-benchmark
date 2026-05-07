@@ -6,6 +6,36 @@ import cancel_payload
 
 
 class ExtendedCancelPayloadTest(unittest.TestCase):
+    def test_planned_orders_include_batch_offsets(self):
+        got = cancel_payload.planned_orders(
+            {"run": {"run_id": "run-a", "scenario": "batch", "iterations": 2, "warmups": 1, "batch_size": 3}},
+            {"market": "BTC-USD", "side": "buy"},
+        )
+
+        self.assertEqual(len(got), 9)
+        self.assertEqual(len({item["external_id"] for item in got}), 9)
+
+    def test_cancel_request_uses_mass_cancel_for_multiple_external_ids(self):
+        got = cancel_payload.cancel_request(
+            {"api_key": "api", "base_url": "https://api.starknet.extended.exchange"},
+            [{"external_id": "a"}, {"external_id": "b"}],
+            {},
+        )
+
+        self.assertEqual(got["method"], "POST")
+        self.assertTrue(got["url"].endswith("/api/v1/user/order/massCancel"))
+        self.assertEqual(cancel_payload.json.loads(got["body"])["externalOrderIds"], ["a", "b"])
+
+    def test_cancel_request_uses_external_id_delete_for_single_order(self):
+        got = cancel_payload.cancel_request(
+            {"api_key": "api", "base_url": "https://api.starknet.extended.exchange"},
+            [{"external_id": "a"}],
+            {},
+        )
+
+        self.assertEqual(got["method"], "DELETE")
+        self.assertIn("/api/v1/user/order?externalId=a", got["url"])
+
     def test_neutralize_price_rounds_to_tick(self):
         self.assertEqual(
             cancel_payload.fallback_neutralize_price(

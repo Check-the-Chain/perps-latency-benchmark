@@ -111,8 +111,9 @@ func Definition() spec.Definition {
 				}, true
 			},
 		},
-		Classifier:   classify,
-		Confirmation: ConfirmWebSocket,
+		Classifier:         classify,
+		Confirmation:       ConfirmWebSocket,
+		CancelConfirmation: ConfirmCancelWebSocket,
 		Docs: []string{
 			"https://apidocs.lighter.xyz/docs/get-started",
 			"https://apidocs.lighter.xyz/reference/sendtx",

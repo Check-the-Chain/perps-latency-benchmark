@@ -5,9 +5,14 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.dev.vars ./node_modules/vite/bin/vite.js dev --port 3000",
     "build": "vite build",
+    "build:worker": "npm run build && node scripts/prepare-worker-envs.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json",
+    "deploy:staging": "npm run build:worker && wrangler deploy --config dist/server/wrangler.json --env staging",
+    "deploy:production": "npm run build:worker && wrangler deploy --config dist/server/wrangler.json --env production",
     "deploy:dry-run": "npm run build && wrangler deploy --config dist/server/wrangler.json --dry-run",
+    "deploy:staging:dry-run": "npm run build:worker && wrangler deploy --config dist/server/wrangler.json --env staging --dry-run",
+    "deploy:production:dry-run": "npm run build:worker && wrangler deploy --config dist/server/wrangler.json --env production --dry-run",
     "cf:typegen": "wrangler types --env-file /dev/null --strict-vars false",
     "typecheck": "tsc --noEmit"
   },

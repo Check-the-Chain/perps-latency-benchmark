@@ -16,7 +16,8 @@ from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from cleanup_common import cleanup_orders_for_venue, cleanup_result, result_orders_for_venue
-from build_payload import compact_json, env_or_param, market_model, order_external_id, sdk_config, signed_order
+from build_payload import compact_json, env_or_param, market_model, sdk_config, signed_order
+from order_identity import planned_cleanup_refs
 
 
 def main() -> int:
@@ -246,7 +247,7 @@ async def after_sample(
         return cleanup_result(False, True, "no extended cleanup_orders")
     remaining = await wait_open_cleanup_orders(client, orders, builder_params)
     if remaining:
-        return await cancel_orders(client, remaining, {})
+        return cancel_request(builder_params, remaining, {})
     close = await neutralize_confirmed_benchmark_order(
         params,
         builder_params,
@@ -348,6 +349,38 @@ async def cancel_orders(client: Any, orders: list[dict[str, Any]], reconciliatio
     return cleanup_result(True, ok, description or "cancel extended benchmark orders by external ID", metadata=reconciliation)
 
 
+def cancel_request(builder_params: dict[str, Any], orders: list[dict[str, Any]], reconciliation: dict[str, Any]) -> dict[str, Any]:
+    external_ids = [str(order["external_id"]) for order in orders if order.get("external_id")]
+    if not external_ids:
+        return cleanup_result(False, True, "no extended external IDs to cancel", metadata=reconciliation)
+    base_url = str(builder_params.get("base_url", "https://api.starknet.extended.exchange")).rstrip("/")
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": builder_params.get("user_agent", "perps-latency-benchmark"),
+        "X-Api-Key": env_or_param(builder_params, "api_key", "EXTENDED_API_KEY"),
+    }
+    cancel_confirmation = {
+        "venue": "extended",
+        "ws_url": builder_params.get("ws_url", "wss://api.starknet.extended.exchange/stream.extended.exchange/v1/account"),
+        "api_key": headers["X-Api-Key"],
+        "external_ids": external_ids,
+    }
+    if len(external_ids) == 1:
+        return {
+            "method": "DELETE",
+            "url": base_url + "/api/v1/user/order?" + urllib.parse.urlencode({"externalId": external_ids[0]}),
+            "headers": headers,
+            "metadata": {"cleanup": "cancel_order_by_external_id", "orders": 1, "cancel_confirmation": cancel_confirmation, "reconciliation": reconciliation},
+        }
+    return {
+        "method": "POST",
+        "url": base_url + "/api/v1/user/order/massCancel",
+        "headers": headers,
+        "body": compact_json({"externalOrderIds": external_ids}),
+        "metadata": {"cleanup": "mass_cancel_by_external_id", "orders": len(external_ids), "cancel_confirmation": cancel_confirmation, "reconciliation": reconciliation},
+    }
+
+
 async def active_market_orders(client: Any, params: dict[str, Any]) -> list[dict[str, Any]]:
     market = str(params.get("market", "BTC-USD"))
     response = await client.account.get_open_orders(market_names=[market])
@@ -396,23 +429,7 @@ async def wait_no_open_cleanup_orders(client: Any, refs: list[dict[str, Any]], p
 
 
 def planned_orders(params: dict[str, Any], builder_params: dict[str, Any]) -> list[dict[str, Any]]:
-    run = dict(params.get("run") or {})
-    run_id = run.get("run_id")
-    if not run_id:
-        return []
-    total = int(run.get("iterations") or 0) + int(run.get("warmups") or 0)
-    warmups = int(run.get("warmups") or 0)
-    order_params = dict(builder_params)
-    order_params["run_id"] = run_id
-    refs = []
-    for index in range(total):
-        req = {"iteration": index - warmups}
-        refs.append({
-            "venue": "extended",
-            "market": str(order_params.get("market", "BTC-USD")),
-            "external_id": order_external_id(order_params, req),
-        })
-    return refs
+    return planned_cleanup_refs(params, builder_params)
 
 
 def result_orders(result: dict[str, Any]) -> list[dict[str, Any]]:

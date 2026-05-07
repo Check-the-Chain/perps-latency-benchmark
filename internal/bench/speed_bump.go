@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	ExtendedSpeedBumpNS     int64 = 150_000_000
+	ExtendedSpeedBumpSource       = "Extended documents a 150 ms taker order-entry speed bump"
+)
+
 func speedBumpFromMetadata(metadata map[string]any) (int64, string) {
 	if len(metadata) == 0 {
 		return 0, ""
@@ -33,15 +38,55 @@ func rawNetworkNS(sample Sample) int64 {
 }
 
 func AdjustedNetworkNS(sample Sample) int64 {
-	if sample.AdjustedNetworkNS > 0 {
+	speedBumpNS := SpeedBumpNS(sample)
+	if sample.AdjustedNetworkNS > 0 && speedBumpNS == sample.SpeedBumpNS {
 		return sample.AdjustedNetworkNS
 	}
 	raw := RawNetworkNS(sample)
-	adjusted := raw - sample.SpeedBumpNS
+	adjusted := raw - speedBumpNS
 	if adjusted < 0 {
 		return 0
 	}
 	return adjusted
+}
+
+func SpeedBumpNS(sample Sample) int64 {
+	if sample.SpeedBumpNS > 0 && !isExtendedNonTaker(sample) {
+		return sample.SpeedBumpNS
+	}
+	if isExtendedTaker(sample) {
+		return ExtendedSpeedBumpNS
+	}
+	return 0
+}
+
+func SpeedBumpSource(sample Sample) string {
+	if sample.SpeedBumpNS > 0 && !isExtendedNonTaker(sample) {
+		if source := strings.TrimSpace(sample.SpeedBumpSource); source != "" {
+			return source
+		}
+	}
+	if isExtendedTaker(sample) {
+		return ExtendedSpeedBumpSource
+	}
+	return strings.TrimSpace(sample.SpeedBumpSource)
+}
+
+func isExtendedTaker(sample Sample) bool {
+	return strings.EqualFold(sample.Venue, "extended") && isTakerOrderType(sample.OrderType)
+}
+
+func isExtendedNonTaker(sample Sample) bool {
+	return strings.EqualFold(sample.Venue, "extended") && !isTakerOrderType(sample.OrderType)
+}
+
+func isTakerOrderType(orderType string) bool {
+	switch strings.ToLower(strings.TrimSpace(orderType)) {
+	case "market", "ioc":
+		return true
+	default:
+		return false
+	}
 }
 
 func RawNetworkNS(sample Sample) int64 {

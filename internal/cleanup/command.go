@@ -16,20 +16,25 @@ import (
 )
 
 type CommandConfig struct {
-	Type           string
-	Command        []string
-	Env            map[string]string
-	Directory      string
-	Timeout        time.Duration
-	Method         string
-	URL            string
-	Headers        map[string]string
-	StaticParams   map[string]any
-	Client         *netlatency.Client
-	Classifier     lifecycle.Classifier
-	Description    string
-	SkipNoRefs     bool
-	OrderRefsField string
+	Type               string
+	Command            []string
+	Env                map[string]string
+	Directory          string
+	Timeout            time.Duration
+	Method             string
+	URL                string
+	WSURL              string
+	WSBatchURL         string
+	WSReadInitial      bool
+	WSHeartbeat        netlatency.WebSocketHeartbeat
+	Headers            map[string]string
+	StaticParams       map[string]any
+	Client             *netlatency.Client
+	Classifier         lifecycle.Classifier
+	CancelConfirmation func(context.Context, payload.Built) (*bench.Confirmation, error)
+	Description        string
+	SkipNoRefs         bool
+	OrderRefsField     string
 }
 
 type CommandAdapter struct {
@@ -38,6 +43,8 @@ type CommandAdapter struct {
 	headers     http.Header
 	mu          sync.Mutex
 	runMetadata map[string]any
+	wsMu        sync.Mutex
+	wsClients   map[string]*netlatency.WebSocketClient
 }
 
 func NewCommandAdapter(cfg CommandConfig) (*CommandAdapter, error) {
@@ -70,6 +77,7 @@ func NewCommandAdapter(cfg CommandConfig) (*CommandAdapter, error) {
 	if err != nil {
 		return nil, err
 	}
+	cfg.Timeout = timeout
 
 	headers := make(http.Header)
 	for key, value := range cfg.Headers {
@@ -194,12 +202,12 @@ func (a *CommandAdapter) prepare(ctx context.Context, start time.Time, req paylo
 		return bench.PreparedCleanup{Result: built.Cleanup, PreparedNS: built.Cleanup.PreparedNS}, nil
 	}
 
-	body, err := payload.Bytes(built.Body, built.BodyBase64, nil)
+	preparedNS := time.Since(start).Nanoseconds()
+	routes, hasRoute, err := cleanupRoutes(req, built, a.cfg, a.headers)
 	if err != nil {
 		return bench.PreparedCleanup{}, err
 	}
-	preparedNS := time.Since(start).Nanoseconds()
-	if len(body) == 0 {
+	if !hasRoute {
 		return bench.PreparedCleanup{Result: &bench.CleanupResult{
 			Attempted:   false,
 			OK:          true,
@@ -208,52 +216,92 @@ func (a *CommandAdapter) prepare(ctx context.Context, start time.Time, req paylo
 			Description: cmp.Or(a.cfg.Description, "cleanup skipped"),
 		}, PreparedNS: preparedNS}, nil
 	}
-	template := netlatency.RequestTemplate{
-		Method: cmp.Or(built.Method, a.cfg.Method, http.MethodPost),
-		URL:    cmp.Or(built.URL, a.cfg.URL),
-		Header: payload.MergeHeaders(a.headers, built.Headers),
-		Body:   body,
+	var routeErrors []string
+	for _, route := range routes {
+		prepared, ok, fallback, err := a.prepareCleanupRoute(ctx, start, preparedNS, route, built, routeErrors)
+		if err != nil {
+			return bench.PreparedCleanup{}, err
+		}
+		if ok {
+			return prepared, nil
+		}
+		if fallback != "" {
+			routeErrors = append(routeErrors, fallback)
+		}
 	}
-	return bench.PreparedCleanup{
-		PreparedNS: preparedNS,
-		Execute: func(execCtx context.Context) bench.CleanupResult {
-			executeStart := time.Now()
-			result, err := a.cfg.Client.Do(execCtx, template)
-			classification := lifecycle.ClassifyResponse(lifecycle.ResponseInput{
-				StatusCode: result.StatusCode,
-				Body:       result.Body,
-				Err:        err,
-			})
-			if a.cfg.Classifier != nil {
-				classification = a.cfg.Classifier(lifecycle.ResponseInput{
-					StatusCode: result.StatusCode,
-					Body:       result.Body,
-					Err:        err,
-				})
-			}
-			ok := err == nil && classification.OK()
-			cleanup := bench.CleanupResult{
-				Attempted:   true,
-				OK:          ok,
-				StatusCode:  result.StatusCode,
-				PreparedNS:  preparedNS,
-				DurationNS:  time.Since(executeStart).Nanoseconds(),
-				BytesRead:   result.BytesRead,
-				Description: cmp.Or(cleanupDescription(built.Metadata), a.cfg.Description, "cleanup"),
-				Metadata:    cleanupMetadata(built.Metadata),
-				Trace:       result.Trace,
-			}
-			if err != nil {
-				cleanup.Error = err.Error()
-			} else if !ok {
-				cleanup.Error = string(classification.Status)
-				if classification.Reason != "" {
-					cleanup.Error += ": " + classification.Reason
-				}
-			}
-			return cleanup
-		},
-	}, nil
+	return bench.PreparedCleanup{}, fmt.Errorf("no cleanup route could be prepared: %s", strings.Join(routeErrors, "; "))
+}
+
+func (a *CommandAdapter) prepareCleanupRoute(ctx context.Context, start time.Time, preparedNS int64, route cleanupRoute, built payload.Built, routeErrors []string) (bench.PreparedCleanup, bool, string, error) {
+	switch route.kind {
+	case cleanupRouteWebSocket:
+		headers := payload.MergeHeaders(a.headers, built.Headers)
+		client, err := a.webSocketClient(route.wsURL, headers)
+		if err != nil {
+			return bench.PreparedCleanup{}, false, "", err
+		}
+		if err := client.EnsureConnected(ctx); err != nil {
+			return bench.PreparedCleanup{}, false, "websocket prepare failed: " + err.Error(), nil
+		}
+		confirmation, err := a.prepareCancelConfirmation(ctx, built)
+		if err != nil {
+			return bench.PreparedCleanup{}, false, "", err
+		}
+		preparedNS = time.Since(start).Nanoseconds()
+		return bench.PreparedCleanup{
+			PreparedNS: preparedNS,
+			Execute: func(execCtx context.Context) bench.CleanupResult {
+				result, err := client.Do(execCtx, route.wsBody)
+				cleanup := a.execution().resultFromNetworkWithConfirmation(execCtx, result, err, preparedNS, built, confirmation, a.cfg.Timeout)
+				annotateCleanupRoute(&cleanup, string(cleanupRouteWebSocket), routeErrors)
+				return cleanup
+			},
+		}, true, "", nil
+	case cleanupRouteHTTP:
+		confirmation, err := a.prepareCancelConfirmation(ctx, built)
+		if err != nil {
+			return bench.PreparedCleanup{}, false, "", err
+		}
+		return bench.PreparedCleanup{
+			PreparedNS: preparedNS,
+			Execute: func(execCtx context.Context) bench.CleanupResult {
+				result, err := a.cfg.Client.Do(execCtx, route.http)
+				cleanup := a.execution().resultFromNetworkWithConfirmation(execCtx, result, err, preparedNS, built, confirmation, a.cfg.Timeout)
+				annotateCleanupRoute(&cleanup, string(cleanupRouteHTTP), routeErrors)
+				return cleanup
+			},
+		}, true, "", nil
+	default:
+		return bench.PreparedCleanup{}, false, "", fmt.Errorf("unknown cleanup route kind %q", route.kind)
+	}
+}
+
+func (a *CommandAdapter) prepareCancelConfirmation(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
+	if a.cfg.CancelConfirmation == nil {
+		return nil, nil
+	}
+	return a.cfg.CancelConfirmation(ctx, built)
+}
+
+func (a *CommandAdapter) webSocketClient(rawURL string, headers http.Header) (*netlatency.WebSocketClient, error) {
+	if rawURL == "" {
+		return nil, fmt.Errorf("cleanup websocket url is required")
+	}
+	a.wsMu.Lock()
+	defer a.wsMu.Unlock()
+	if a.wsClients == nil {
+		a.wsClients = make(map[string]*netlatency.WebSocketClient)
+	}
+	client := a.wsClients[rawURL]
+	if client == nil {
+		client = netlatency.NewWebSocketClientWithHeartbeat(rawURL, headers, a.cfg.WSReadInitial, a.cfg.WSHeartbeat)
+		a.wsClients[rawURL] = client
+	}
+	return client, nil
+}
+
+func (a *CommandAdapter) execution() cleanupExecution {
+	return cleanupExecution{classifier: a.cfg.Classifier, description: a.cfg.Description}
 }
 
 func (a *CommandAdapter) withRetryableAfterSampleCleanup(req payload.Request, prepared bench.PreparedCleanup) bench.PreparedCleanup {
@@ -347,10 +395,19 @@ func (a *CommandAdapter) currentRunMetadata() map[string]any {
 }
 
 func (a *CommandAdapter) Close(ctx context.Context) error {
+	var err error
 	if closer, ok := a.builder.(payload.Closer); ok {
-		return closer.Close(ctx)
+		err = closer.Close(ctx)
 	}
-	return nil
+	a.wsMu.Lock()
+	defer a.wsMu.Unlock()
+	for _, client := range a.wsClients {
+		if closeErr := client.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	clear(a.wsClients)
+	return err
 }
 
 func cleanupError(start time.Time, err error) bench.CleanupResult {
@@ -382,6 +439,7 @@ func cleanupMetadata(metadata map[string]any) map[string]any {
 	}
 	copied := copyMap(metadata)
 	delete(copied, "cleanup")
+	delete(copied, "cancel_confirmation")
 	return copied
 }
 

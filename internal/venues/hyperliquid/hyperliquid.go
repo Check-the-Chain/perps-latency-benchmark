@@ -134,8 +134,9 @@ func Definition() spec.Definition {
 				}, true
 			},
 		},
-		Classifier:   classify,
-		Confirmation: ConfirmWebSocket,
+		Classifier:         classify,
+		Confirmation:       ConfirmWebSocket,
+		CancelConfirmation: ConfirmCancelWebSocket,
 		Docs: []string{
 			ExchangeEndpointDocsURL,
 			WebSocketDocsURL,

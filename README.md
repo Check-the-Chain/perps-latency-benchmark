@@ -215,6 +215,21 @@ npx wrangler secret put PERPS_BENCH_API_PASSWORD --config wrangler.jsonc
 npm run deploy
 ```
 
+The deployment flow uses `staging` as the local/default integration branch and
+`main` as production. Pushes to `staging` deploy the separate Cloudflare Worker
+`perps-latency-dashboard-staging`; merges to `main` deploy production
+`perps-latency-dashboard`.
+
+```bash
+cd frontend
+npm run deploy:staging
+npm run deploy:production
+```
+
+Autodeploy can call the same npm scripts from the relevant branch. The Worker
+runtime secrets `PERPS_BENCH_API_URL` and `PERPS_BENCH_API_PASSWORD` are set
+directly in Cloudflare for each Worker environment.
+
 ## Safety
 
 Live runs require `--confirm-live`.

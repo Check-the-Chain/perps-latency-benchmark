@@ -11,12 +11,27 @@ class FakeAsterClient:
     def __init__(self, positions=None, open_orders=None):
         self.positions = positions or []
         self.orders = open_orders or []
+        self.base_url = "https://fapi.asterdex.com"
+        self.signer = self
 
     def position_snapshot(self, _symbol):
         return self.positions
 
     def open_orders(self, _symbol):
         return self.orders
+
+    def sign(self, values):
+        return "signed=" + cancel_payload.compact_json(values)
+
+    def cancel_order_body(self, symbol, client_order_id):
+        return self.sign({"symbol": symbol, "origClientOrderId": client_order_id})
+
+    def cancel_batch_body(self, refs):
+        symbols = {ref["symbol"] for ref in refs}
+        return self.sign({"symbol": next(iter(symbols)), "origClientOrderIdList": [ref["client_order_id"] for ref in refs]})
+
+    def cancel_confirmation(self, refs):
+        return {"venue": "aster", "client_order_ids": [ref["client_order_id"] for ref in refs]}
 
 
 class AsterCleanupHelpersTest(unittest.TestCase):
@@ -75,6 +90,23 @@ class AsterCleanupHelpersTest(unittest.TestCase):
         )
 
         self.assertTrue(got["cleanup"]["ok"])
+
+    def test_cancel_request_uses_batch_endpoint_for_multiple_orders(self):
+        got = cancel_payload.cancel_request(
+            FakeAsterClient(),
+            [
+                {"symbol": "BTCUSDT", "client_order_id": "a"},
+                {"symbol": "BTCUSDT", "client_order_id": "b"},
+            ],
+            {},
+        )
+
+        self.assertEqual(got["method"], "DELETE")
+        self.assertTrue(got["url"].endswith("/fapi/v3/batchOrders"))
+        self.assertEqual(got["metadata"]["cleanup"], "cancel_batch_orders")
+        self.assertIn('"symbol":"BTCUSDT"', got["body"])
+        self.assertIn("origClientOrderIdList", got["body"])
+        self.assertEqual(got["metadata"]["cancel_confirmation"]["client_order_ids"], ["a", "b"])
 
 
 if __name__ == "__main__":

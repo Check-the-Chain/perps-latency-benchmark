@@ -8,7 +8,14 @@ import { ParentSize } from "@visx/responsive"
 import { scaleLinear, scaleTime } from "@visx/scale"
 import { LinePath } from "@visx/shape"
 import { TooltipWithBounds, useTooltip } from "@visx/tooltip"
-import { Fragment, type PointerEvent, type ReactNode, useMemo, useState } from "react"
+import {
+  Fragment,
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 
 import type { Sample } from "@/api/bench"
 import { colorForVenue } from "@/components/charts/latency-timeseries-chart"
@@ -29,8 +36,11 @@ import {
 } from "@/lib/taker-cost"
 
 const CHART_MARGIN = { top: 16, right: 18, bottom: 32, left: 58 }
+const ROLLING_MEDIAN_POINTS = 9
 
 type CostChartMode = "total" | "net" | "fees"
+type CostDisplayMode = "raw" | "trend" | "trend-raw"
+type CostChartView = "per-round" | "cumulative"
 
 const COST_CHART_MODES: Array<{ label: string; mode: CostChartMode }> = [
   { label: "Total cost", mode: "total" },
@@ -153,7 +163,11 @@ function CostChart({
   onModeChange: (mode: CostChartMode) => void
   records: Array<TakerCostRecord>
 }) {
-  const copy = COST_MODE_COPY[mode]
+  const [displayMode, setDisplayMode] = useState<CostDisplayMode>("trend-raw")
+  const [hideOutliers, setHideOutliers] = useState(true)
+  const [view, setView] = useState<CostChartView>("per-round")
+  const copy = costChartCopy(mode, view)
+  const showRoundControls = view === "per-round"
 
   return (
     <div className="min-h-[300px] min-w-0 overflow-visible">
@@ -162,7 +176,16 @@ function CostChart({
           <h3 className="font-sans text-xs font-semibold">{copy.title}</h3>
           <p className="mt-1 max-w-[520px] text-[10px] text-muted-foreground">{copy.description}</p>
         </div>
-        <CostModeToggle mode={mode} onChange={onModeChange} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {showRoundControls ? (
+            <>
+              <CostDisplayModeToggle value={displayMode} onChange={setDisplayMode} />
+              <CostOutlierToggle checked={hideOutliers} onChange={setHideOutliers} />
+            </>
+          ) : null}
+          <CostViewToggle value={view} onChange={setView} />
+          <CostModeToggle mode={mode} onChange={onModeChange} />
+        </div>
       </div>
       <div className="h-[250px] overflow-visible">
         {records.length === 0 ? (
@@ -172,11 +195,129 @@ function CostChart({
         ) : (
           <ParentSize>
             {({ width, height }) => (
-              <CostChartFrame height={height} mode={mode} records={records} width={width} />
+              <CostChartFrame
+                displayMode={displayMode}
+                height={height}
+                hideOutliers={hideOutliers}
+                mode={mode}
+                records={records}
+                view={view}
+                width={width}
+              />
             )}
           </ParentSize>
         )}
       </div>
+    </div>
+  )
+}
+
+function costChartCopy(mode: CostChartMode, view: CostChartView) {
+  if (view === "per-round") {
+    return COST_MODE_COPY[mode]
+  }
+
+  if (mode === "fees") {
+    return {
+      description: "Running total of explicit trading fees paid on open and close orders by venue.",
+      title: "Cumulative Fees",
+    }
+  }
+  if (mode === "net") {
+    return {
+      description: "Running total of round-trip cost after removing explicit trading fees.",
+      title: "Cumulative Net Trading Cost",
+    }
+  }
+  return {
+    description: "Running total of full round-trip cost by venue, including trading fees.",
+    title: "Cumulative Cost",
+  }
+}
+
+function CostDisplayModeToggle({
+  value,
+  onChange,
+}: {
+  value: CostDisplayMode
+  onChange: (mode: CostDisplayMode) => void
+}) {
+  const modes: Array<{ label: string; mode: CostDisplayMode }> = [
+    { label: "Raw", mode: "raw" },
+    { label: "Trend", mode: "trend" },
+    { label: "Trend + raw", mode: "trend-raw" },
+  ]
+
+  return (
+    <div className="inline-flex rounded-sm border border-border bg-surface-2 p-0.5">
+      {modes.map((item) => (
+        <button
+          key={item.mode}
+          type="button"
+          onClick={() => onChange(item.mode)}
+          className={`h-7 px-2 text-[10px] ${
+            value === item.mode
+              ? "bg-surface-1 text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          aria-pressed={value === item.mode}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function CostOutlierToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex h-8 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface-1 px-2 text-[10px] text-muted-foreground hover:bg-surface-2 hover:text-foreground">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        className="size-3 accent-[var(--primary)]"
+      />
+      <span>Hide outliers</span>
+    </label>
+  )
+}
+
+function CostViewToggle({
+  value,
+  onChange,
+}: {
+  value: CostChartView
+  onChange: (view: CostChartView) => void
+}) {
+  const views: Array<{ label: string; view: CostChartView }> = [
+    { label: "Per round", view: "per-round" },
+    { label: "Cumulative", view: "cumulative" },
+  ]
+
+  return (
+    <div className="inline-flex rounded-sm border border-border bg-surface-2 p-0.5">
+      {views.map((item) => (
+        <button
+          key={item.view}
+          type="button"
+          onClick={() => onChange(item.view)}
+          className={`h-7 px-2 text-[10px] ${
+            value === item.view
+              ? "bg-surface-1 text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          aria-pressed={value === item.view}
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -200,6 +341,7 @@ function CostModeToggle({
               ? "bg-surface-1 text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
+          aria-pressed={mode === item.mode}
         >
           {item.label}
         </button>
@@ -257,14 +399,20 @@ function VenueCostBars({ rows }: { rows: ReturnType<typeof summarizeSlippage> })
 }
 
 function CostChartFrame({
+  displayMode,
   height,
+  hideOutliers,
   mode,
   records,
+  view,
   width,
 }: {
+  displayMode: CostDisplayMode
   height: number
+  hideOutliers: boolean
   mode: CostChartMode
   records: Array<TakerCostRecord>
+  view: CostChartView
   width: number
 }) {
   const {
@@ -275,13 +423,29 @@ function CostChartFrame({
     tooltipOpen,
     tooltipTop = 0,
   } = useTooltip<CostPoint>()
-  const series = useMemo(() => buildCostSeries(records, mode), [mode, records])
+  const series = useMemo(() => buildCostSeries(records, mode, view), [mode, records, view])
+  const displaySeries = useMemo(
+    () =>
+      buildDisplayCostSeries(
+        series,
+        view === "cumulative" ? "raw" : displayMode,
+        view === "cumulative" ? false : hideOutliers
+      ),
+    [displayMode, hideOutliers, series, view]
+  )
+  useDismissTooltipOnViewportChange(hideTooltip)
+  useEffect(() => {
+    hideTooltip()
+  }, [displayMode, displaySeries, height, hideOutliers, hideTooltip, mode, view, width])
 
-  if (width <= 0 || height <= 0 || series.length === 0) {
+  if (width <= 0 || height <= 0 || displaySeries.length === 0) {
     return null
   }
 
-  const points = series.flatMap((item) => item.points)
+  const points = displaySeries.flatMap((item) => [
+    ...item.linePoints,
+    ...item.rawPoints,
+  ])
   const minTime = Math.min(...points.map((point) => point.date.getTime()))
   const maxTime = Math.max(...points.map((point) => point.date.getTime()))
   const yDomain = paddedCostDomain(points.map((point) => point.value))
@@ -323,7 +487,12 @@ function CostChartFrame({
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative h-full w-full"
+      onPointerLeave={hideTooltip}
+      onMouseLeave={hideTooltip}
+      onBlur={hideTooltip}
+    >
       <svg
         width={width}
         height={height}
@@ -378,24 +547,66 @@ function CostChartFrame({
             stroke="oklch(0.9 0.004 255)"
             tickStroke="oklch(0.9 0.004 255)"
           />
-          {series.map((item) => (
+          <rect
+            width={innerWidth}
+            height={innerHeight}
+            fill="transparent"
+            onPointerEnter={hideTooltip}
+            onPointerMove={hideTooltip}
+          />
+          {displaySeries.map((item) => (
             <Group key={item.venue}>
+              {displayMode === "trend-raw"
+                ? item.rawPoints.map((point) => (
+                    <Group
+                      key={`${item.venue}:raw:${point.date.toISOString()}:${point.value}`}
+                      onPointerEnter={(event) =>
+                        showHover(event, point, item.venue)
+                      }
+                      onPointerMove={(event) =>
+                        showHover(event, point, item.venue)
+                      }
+                      onPointerLeave={hideTooltip}
+                    >
+                      <circle
+                        cx={xScale(point.date)}
+                        cy={yScale(point.value)}
+                        r={6}
+                        fill="transparent"
+                      />
+                      <circle
+                        cx={xScale(point.date)}
+                        cy={yScale(point.value)}
+                        r={1.8}
+                        fill={colorForVenue(item.venue)}
+                        opacity={0.28}
+                      />
+                    </Group>
+                  ))
+                : null}
               <LinePath
-                data={item.points}
+                data={item.linePoints}
                 x={(point) => xScale(point.date)}
                 y={(point) => yScale(point.value)}
+                pointerEvents="none"
                 stroke={colorForVenue(item.venue)}
                 strokeWidth={1.7}
               />
-              {item.points.map((point) => (
+              {item.linePoints.map((point) => (
                 <Group
-                  key={`${item.venue}:${point.date.toISOString()}:${point.value}`}
+                  key={`${item.venue}:line:${point.date.toISOString()}:${point.value}`}
                   onPointerEnter={(event) => showHover(event, point, item.venue)}
                   onPointerMove={(event) => showHover(event, point, item.venue)}
                   onPointerLeave={hideTooltip}
                 >
                   <circle cx={xScale(point.date)} cy={yScale(point.value)} r={7} fill="transparent" />
-                  <circle cx={xScale(point.date)} cy={yScale(point.value)} r={2.5} fill={colorForVenue(item.venue)} />
+                  <circle
+                    cx={xScale(point.date)}
+                    cy={yScale(point.value)}
+                    r={2.5}
+                    fill={colorForVenue(item.venue)}
+                    opacity={displayMode === "trend-raw" ? 0 : 1}
+                  />
                 </Group>
               ))}
             </Group>
@@ -408,16 +619,32 @@ function CostChartFrame({
           top={tooltipTop}
           className="pointer-events-none z-10 w-[250px] rounded-sm border border-border/80 bg-surface-1 px-2.5 py-2 text-[10px] shadow-sm"
         >
-          <CostTooltip hover={tooltipData} mode={mode} />
+          <CostTooltip hover={tooltipData} mode={mode} view={view} />
         </TooltipWithBounds>
       ) : null}
     </div>
   )
 }
 
+function useDismissTooltipOnViewportChange(hideTooltip: () => void) {
+  useEffect(() => {
+    window.addEventListener("scroll", hideTooltip, true)
+    window.addEventListener("resize", hideTooltip)
+    window.addEventListener("blur", hideTooltip)
+
+    return () => {
+      window.removeEventListener("scroll", hideTooltip, true)
+      window.removeEventListener("resize", hideTooltip)
+      window.removeEventListener("blur", hideTooltip)
+    }
+  }, [hideTooltip])
+}
+
 interface CostPointBase {
   date: Date
+  kind: "raw" | "rolling-median"
   record: TakerCostRecord
+  sampleCount?: number
   value: number
   venue: string
 }
@@ -425,21 +652,30 @@ interface CostPointBase {
 interface CostPoint {
   color: string
   date: Date
+  kind: "raw" | "rolling-median"
   key: string
   record: TakerCostRecord
+  sampleCount?: number
   value: number
+  venue: string
+}
+
+interface CostSeries {
+  points: Array<CostPointBase>
   venue: string
 }
 
 function CostTooltip({
   hover,
   mode,
+  view,
 }: {
   hover: CostPoint
   mode: CostChartMode
+  view: CostChartView
 }) {
   const record = hover.record
-  const rows = tooltipRows(record, mode)
+  const rows = tooltipRows(record, mode, view, hover.value)
 
   return (
     <>
@@ -459,6 +695,12 @@ function CostTooltip({
             </span>
           </Fragment>
         ))}
+        {hover.sampleCount ? (
+          <>
+            <span className="text-muted-foreground">Window</span>
+            <span className="font-mono">{formatCount(hover.sampleCount)} rounds</span>
+          </>
+        ) : null}
         <span className="text-muted-foreground">Open fee</span>
         <span className="font-mono">{formatUSD(record.entryFeeUSD)}</span>
         <span className="text-muted-foreground">Close fee</span>
@@ -476,13 +718,23 @@ function costPointKey(point: CostPointBase) {
   return `${point.venue}:${point.date.toISOString()}:${point.value}`
 }
 
-function tooltipRows(record: TakerCostRecord, mode: CostChartMode) {
+function tooltipRows(
+  record: TakerCostRecord,
+  mode: CostChartMode,
+  view: CostChartView,
+  primaryValue: number
+) {
   const rows = [
     { label: "Total cost", mode: "total" as const, value: record.tradeCostUSD },
     { label: "Net trading cost", mode: "net" as const, value: netTradingCostUSD(record) },
     { label: "Trading fees", mode: "fees" as const, value: tradingFeesUSD(record) },
   ]
-  return rows.map((row) => ({ ...row, primary: row.mode === mode }))
+  return rows.map((row) => ({
+    ...row,
+    primary: row.mode === mode,
+    label: row.mode === mode && view === "cumulative" ? `Cumulative ${row.label.toLowerCase()}` : row.label,
+    value: row.mode === mode ? primaryValue : row.value,
+  }))
 }
 
 function paddedCostDomain(values: Array<number>): [number, number] {
@@ -635,13 +887,31 @@ function BodyCell({
   )
 }
 
-function buildCostSeries(records: Array<TakerCostRecord>, mode: CostChartMode) {
-  const points = records.map((record) => ({
-    date: record.date,
-    record,
-    value: costValue(record, mode),
-    venue: record.venue,
-  }))
+function buildCostSeries(
+  records: Array<TakerCostRecord>,
+  mode: CostChartMode,
+  view: CostChartView
+): Array<CostSeries> {
+  const runningTotals = new Map<string, number>()
+  const points = records.map((record) => {
+    const roundValue = costValue(record, mode)
+    const value =
+      view === "cumulative"
+        ? (runningTotals.get(record.venue) ?? 0) + roundValue
+        : roundValue
+
+    if (view === "cumulative") {
+      runningTotals.set(record.venue, value)
+    }
+
+    return {
+      date: record.date,
+      kind: "raw" as const,
+      record,
+      value,
+      venue: record.venue,
+    }
+  })
   const groups = new Map<string, typeof points>()
   for (const point of points) {
     groups.set(point.venue, [...(groups.get(point.venue) ?? []), point])
@@ -652,6 +922,60 @@ function buildCostSeries(records: Array<TakerCostRecord>, mode: CostChartMode) {
       venue,
     }))
     .sort((left, right) => left.venue.localeCompare(right.venue))
+}
+
+function buildDisplayCostSeries(
+  series: Array<CostSeries>,
+  displayMode: CostDisplayMode,
+  hideOutliers: boolean
+) {
+  return series
+    .map((item) => {
+      const points = hideOutliers ? withoutCostOutliers(item.points) : item.points
+      const trendPoints = rollingMedianCostPoints(points, ROLLING_MEDIAN_POINTS)
+
+      return {
+        ...item,
+        linePoints: displayMode === "raw" ? points : trendPoints,
+        rawPoints: displayMode === "trend-raw" ? points : [],
+      }
+    })
+    .filter((item) => item.linePoints.length > 0 || item.rawPoints.length > 0)
+}
+
+function rollingMedianCostPoints(
+  points: Array<CostPointBase>,
+  windowSize: number
+): Array<CostPointBase> {
+  return points.map((point, index) => {
+    const start = Math.max(0, index - windowSize + 1)
+    const window = points.slice(start, index + 1)
+
+    return {
+      ...point,
+      kind: "rolling-median",
+      sampleCount: window.length,
+      value: numericMedian(window.map((item) => item.value)),
+    }
+  })
+}
+
+function withoutCostOutliers(points: Array<CostPointBase>) {
+  if (points.length < 8) {
+    return points
+  }
+
+  const values = points.map((point) => point.value).sort((a, b) => a - b)
+  const q1 = numericQuantile(values, 0.25)
+  const q3 = numericQuantile(values, 0.75)
+  const iqr = q3 - q1
+  const padding = iqr > 0 ? 1.5 * iqr : Math.max(Math.abs(q3), 0.001) * 3
+  const lowerFence = q1 - padding
+  const upperFence = q3 + padding
+
+  return points.filter(
+    (point) => point.value >= lowerFence && point.value <= upperFence
+  )
 }
 
 function costValue(record: TakerCostRecord, mode: CostChartMode) {
@@ -670,6 +994,29 @@ function netTradingCostUSD(record: TakerCostRecord) {
 
 function tradingFeesUSD(record: TakerCostRecord) {
   return record.entryFeeUSD + record.exitFeeUSD
+}
+
+function numericMedian(values: Array<number>) {
+  return numericQuantile(
+    [...values].sort((a, b) => a - b),
+    0.5
+  )
+}
+
+function numericQuantile(sortedValues: Array<number>, q: number) {
+  if (sortedValues.length === 0) {
+    return 0
+  }
+  if (sortedValues.length === 1) {
+    return sortedValues[0]
+  }
+
+  const index = (sortedValues.length - 1) * q
+  const lower = Math.floor(index)
+  const upper = Math.ceil(index)
+  const weight = index - lower
+
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight
 }
 
 function formatVenue(value: string) {

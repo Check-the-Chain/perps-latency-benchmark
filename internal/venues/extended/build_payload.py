@@ -16,10 +16,11 @@ import json
 import os
 import sys
 import time
-import hashlib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
+
+from order_identity import cleanup_refs_for_orders, is_fill_likely, order_external_id
 
 
 def main() -> int:
@@ -84,6 +85,8 @@ def build(
     nonce_base = int(params.get("nonce_base") or (time.time_ns() % (2**31 - 1))) + int(req["iteration"])
     order_type = str(params.get("order_type", "limit")).lower()
     tif = str(params.get("time_in_force", "GTT")).upper()
+    bench_order_type = benchmark_order_type(order_type, tif, bool(params.get("post_only", True)))
+    speed_bump_ms = 150 if bench_order_type in {"market", "ioc"} else 0
 
     orders = [
         signed_order(
@@ -103,10 +106,7 @@ def build(
         for offset in range(order_count)
     ]
     external_ids = [order["external_id"] for order in orders]
-    cleanup_orders = [
-        {"venue": "extended", "market": str(params.get("market", "BTC-USD")), "external_id": external_id}
-        for external_id in external_ids
-    ]
+    cleanup_orders = cleanup_refs_for_orders(params, external_ids)
     headers = {
         "Content-Type": "application/json",
         "User-Agent": params.get("user_agent", "perps-latency-benchmark"),
@@ -116,18 +116,18 @@ def build(
         "builder": "x10-python-trading-starknet",
         "nonce": nonce_base,
         "run_id": params.get("run_id"),
-        "order_type": benchmark_order_type(order_type, tif, bool(params.get("post_only", True))),
+        "order_type": bench_order_type,
         "time_in_force": tif,
-        "speed_bump_ns": 0,
-        "speed_bump_ms": 0,
-        "speed_bump_source": "extended official API docs do not document a fixed order-entry speed bump",
+        "speed_bump_ns": speed_bump_ms * 1_000_000,
+        "speed_bump_ms": speed_bump_ms,
+        "speed_bump_source": "Extended documents a 150 ms taker order-entry speed bump" if speed_bump_ms else "",
         "cleanup_orders": cleanup_orders,
         "confirmation": {
             "venue": "extended",
             "ws_url": params.get("ws_url", "wss://api.starknet.extended.exchange/stream.extended.exchange/v1/account"),
             "api_key": account.api_key,
             "external_ids": external_ids,
-            "order_type": benchmark_order_type(order_type, tif, bool(params.get("post_only", True))),
+            "order_type": bench_order_type,
         },
     }
     if scenario == "batch":
@@ -316,30 +316,6 @@ def expiration_time(params: dict[str, Any]) -> datetime:
         return datetime.fromtimestamp(int(millis) / 1000, tz=timezone.utc)
     seconds = int(params.get("expiration_seconds", 3600))
     return datetime.now(tz=timezone.utc) + timedelta(seconds=seconds)
-
-
-def order_external_id(params: dict[str, Any], req: dict[str, Any], offset: int = 0) -> str:
-    for key in ("order_external_id", "external_id", "client_order_id"):
-        value = params.get(key)
-        if value not in (None, ""):
-            raw = str(value)
-            if offset == 0:
-                return raw
-            return (raw[:58] + f"-{offset}")[:64]
-    run_id = params.get("run_id")
-    if run_id and is_fill_likely(params):
-        seed = f"{run_id}:{req.get('iteration', 0)}:{params.get('market', 'BTC-USD')}:{params.get('side', 'buy')}:{offset}:{time.time_ns()}".encode()
-        return "pb-" + hashlib.blake2b(seed, digest_size=16).hexdigest()
-    if run_id:
-        seed = f"{run_id}:{req.get('iteration', 0)}:{params.get('market', 'BTC-USD')}:{params.get('side', 'buy')}:{offset}".encode()
-        return "pb-" + hashlib.blake2b(seed, digest_size=16).hexdigest()
-    return "pb-" + format(time.time_ns() & ((1 << 63) - 1), "x")
-
-
-def is_fill_likely(params: dict[str, Any]) -> bool:
-    order_type = str(params.get("order_type", "limit")).lower()
-    tif = str(params.get("time_in_force", "GTT")).upper()
-    return order_type == "market" or tif in ("IOC", "FOK")
 
 
 def benchmark_order_type(order_type: str, time_in_force: str, post_only: bool) -> str:

@@ -23,6 +23,8 @@ func TestSQLiteWritesAndReadsSamples(t *testing.T) {
 	now := time.Now().UTC()
 	scheduledAt := now.Add(-2 * time.Second)
 	sentAt := scheduledAt.Add(300 * time.Microsecond)
+	cleanupScheduledAt := now.Add(100 * time.Millisecond)
+	cleanupSentAt := cleanupScheduledAt.Add(250 * time.Microsecond)
 	err = db.WriteSamples(context.Background(), []SampleRecord{
 		{
 			LatencyMode: bench.LatencyModeTotal,
@@ -42,7 +44,23 @@ func TestSQLiteWritesAndReadsSamples(t *testing.T) {
 				SpeedBumpSource:   "test speed bump",
 				OK:                true,
 				Classification:    lifecycle.Classification{Status: lifecycle.StatusAccepted},
-				Cleanup:           &bench.CleanupResult{Attempted: true, OK: true},
+				Cleanup: &bench.CleanupResult{
+					Attempted:    true,
+					OK:           true,
+					StatusCode:   200,
+					DurationNS:   2_500_000,
+					PreparedNS:   700_000,
+					ScheduledAt:  cleanupScheduledAt,
+					SentAt:       cleanupSentAt,
+					StartDelayNS: cleanupSentAt.Sub(cleanupScheduledAt).Nanoseconds(),
+					WriteDelayNS: 120_000,
+					BytesRead:    64,
+					Description:  "cancel mock benchmark orders",
+					Metadata: map[string]any{
+						"cleanup_confirmation":   "account_feed",
+						"cancel_ack_duration_ns": float64(1_200_000),
+					},
+				},
 				OrderRefs: []bench.OrderRef{
 					{Venue: "lighter", Market: "1", ClientOrderIndex: "123"},
 				},
@@ -119,6 +137,15 @@ func TestSQLiteWritesAndReadsSamples(t *testing.T) {
 	}
 	if !samples[0].ScheduledAt.Equal(scheduledAt) || !samples[0].SentAt.Equal(sentAt) || samples[0].StartDelayNS != 300_000 || samples[0].WriteDelayNS != 450_000 {
 		t.Fatalf("timing fields = scheduled %s sent %s start %d write %d", samples[0].ScheduledAt, samples[0].SentAt, samples[0].StartDelayNS, samples[0].WriteDelayNS)
+	}
+	if samples[0].Cleanup.DurationNS != 2_500_000 || samples[0].Cleanup.StatusCode != 200 || samples[0].Cleanup.PreparedNS != 700_000 || samples[0].Cleanup.WriteDelayNS != 120_000 || samples[0].Cleanup.BytesRead != 64 || samples[0].Cleanup.Description != "cancel mock benchmark orders" {
+		t.Fatalf("cleanup fields = %+v", samples[0].Cleanup)
+	}
+	if !samples[0].Cleanup.ScheduledAt.Equal(cleanupScheduledAt) || !samples[0].Cleanup.SentAt.Equal(cleanupSentAt) || samples[0].Cleanup.StartDelayNS != 250_000 {
+		t.Fatalf("cleanup timing = scheduled %s sent %s start %d", samples[0].Cleanup.ScheduledAt, samples[0].Cleanup.SentAt, samples[0].Cleanup.StartDelayNS)
+	}
+	if samples[0].Cleanup.Metadata["cleanup_confirmation"] != "account_feed" || samples[0].Cleanup.Metadata["cancel_ack_duration_ns"] != float64(1_200_000) {
+		t.Fatalf("cleanup metadata = %#v", samples[0].Cleanup.Metadata)
 	}
 	if len(samples[0].OrderRefs) != 1 || samples[0].OrderRefs[0].ClientOrderIndex != "123" {
 		t.Fatalf("order refs = %#v", samples[0].OrderRefs)

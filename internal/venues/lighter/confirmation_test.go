@@ -48,3 +48,25 @@ func TestMatchLighterConfirmationAcceptsPostOnlyOpen(t *testing.T) {
 		t.Fatal("expected open post-only order confirmation")
 	}
 }
+
+func TestMatchLighterCancelConfirmationWaitsForAllOrders(t *testing.T) {
+	remaining := map[string]struct{}{"1234": {}, "1235": {}}
+	first := matchLighterCancelConfirmation(map[string]any{
+		"channel": "account_orders:1",
+		"orders": map[string]any{
+			"1": []any{map[string]any{"client_order_index": float64(1234), "status": "canceled-by-user"}},
+		},
+	}, "1", remaining)
+	if first {
+		t.Fatal("expected first cancel update to leave one order outstanding")
+	}
+	second := matchLighterCancelConfirmation(map[string]any{
+		"channel": "account_orders:1",
+		"orders": map[string]any{
+			"1": []any{map[string]any{"client_order_id": "1235", "status": "cancelled"}},
+		},
+	}, "1", remaining)
+	if !second {
+		t.Fatalf("expected all cancels confirmed, remaining = %#v", remaining)
+	}
+}

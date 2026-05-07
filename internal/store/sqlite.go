@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -93,9 +94,17 @@ CREATE TABLE IF NOT EXISTS samples (
   classification_reason TEXT NOT NULL,
   cleanup_attempted INTEGER NOT NULL,
   cleanup_ok INTEGER NOT NULL,
+  cleanup_status_code INTEGER NOT NULL DEFAULT 0,
+  cleanup_duration_ns INTEGER NOT NULL DEFAULT 0,
   cleanup_prepared_ns INTEGER NOT NULL DEFAULT 0,
+  cleanup_scheduled_at TEXT NOT NULL DEFAULT '',
+  cleanup_sent_at TEXT NOT NULL DEFAULT '',
   cleanup_start_delay_ns INTEGER NOT NULL DEFAULT 0,
   cleanup_write_delay_ns INTEGER NOT NULL DEFAULT 0,
+  cleanup_bytes_read INTEGER NOT NULL DEFAULT 0,
+  cleanup_error TEXT NOT NULL DEFAULT '',
+  cleanup_description TEXT NOT NULL DEFAULT '',
+  cleanup_metadata_json TEXT NOT NULL DEFAULT '',
   order_refs_json TEXT NOT NULL DEFAULT '',
   closeout_order_refs_json TEXT NOT NULL DEFAULT '',
   expected_entry_fill_json TEXT NOT NULL DEFAULT '',
@@ -172,10 +181,34 @@ CREATE INDEX IF NOT EXISTS sample_costs_completed_at_idx ON sample_costs(complet
 	if err := s.ensureColumn(ctx, "cleanup_prepared_ns", `ALTER TABLE samples ADD COLUMN cleanup_prepared_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "cleanup_status_code", `ALTER TABLE samples ADD COLUMN cleanup_status_code INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_duration_ns", `ALTER TABLE samples ADD COLUMN cleanup_duration_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_scheduled_at", `ALTER TABLE samples ADD COLUMN cleanup_scheduled_at TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_sent_at", `ALTER TABLE samples ADD COLUMN cleanup_sent_at TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := s.ensureColumn(ctx, "cleanup_start_delay_ns", `ALTER TABLE samples ADD COLUMN cleanup_start_delay_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 	if err := s.ensureColumn(ctx, "cleanup_write_delay_ns", `ALTER TABLE samples ADD COLUMN cleanup_write_delay_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_bytes_read", `ALTER TABLE samples ADD COLUMN cleanup_bytes_read INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_error", `ALTER TABLE samples ADD COLUMN cleanup_error TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_description", `ALTER TABLE samples ADD COLUMN cleanup_description TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "cleanup_metadata_json", `ALTER TABLE samples ADD COLUMN cleanup_metadata_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	if err := s.ensureColumn(ctx, "order_refs_json", `ALTER TABLE samples ADD COLUMN order_refs_json TEXT NOT NULL DEFAULT ''`); err != nil {
@@ -209,9 +242,9 @@ func (s *SQLite) WriteSamples(ctx context.Context, records []SampleRecord) error
 INSERT INTO samples (
   completed_at, scheduled_at, sent_at, venue, run_id, scenario, transport, order_type, latency_mode, measurement_mode, iteration,
   batch_size, network_ns, raw_network_ns, adjusted_network_ns, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
-  cleanup_attempted, cleanup_ok, cleanup_prepared_ns, cleanup_start_delay_ns, cleanup_write_delay_ns,
-  order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  cleanup_attempted, cleanup_ok, cleanup_status_code, cleanup_duration_ns, cleanup_prepared_ns, cleanup_scheduled_at, cleanup_sent_at, cleanup_start_delay_ns, cleanup_write_delay_ns, cleanup_bytes_read, cleanup_error, cleanup_description,
+  cleanup_metadata_json, order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 	if err != nil {
 		_ = tx.Rollback()
@@ -224,7 +257,12 @@ INSERT INTO samples (
 			continue
 		}
 		cleanupAttempted, cleanupOK := cleanupFields(sample.Cleanup)
-		cleanupPreparedNS, cleanupStartDelayNS, cleanupWriteDelayNS := cleanupTimingFields(sample.Cleanup)
+		cleanupStatusCode, cleanupDurationNS, cleanupPreparedNS, cleanupScheduledAt, cleanupSentAt, cleanupStartDelayNS, cleanupWriteDelayNS, cleanupBytesRead, cleanupError, cleanupDescription := cleanupStorageFields(sample.Cleanup)
+		cleanupMetadataJSON, err := cleanupMetadataJSON(sample.Cleanup)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		metadataJSON, err := metadataJSON(sample.Metadata)
 		if err != nil {
 			_ = tx.Rollback()
@@ -276,9 +314,17 @@ INSERT INTO samples (
 			sample.Classification.Reason,
 			cleanupAttempted,
 			cleanupOK,
+			cleanupStatusCode,
+			cleanupDurationNS,
 			cleanupPreparedNS,
+			cleanupScheduledAt,
+			cleanupSentAt,
 			cleanupStartDelayNS,
 			cleanupWriteDelayNS,
+			cleanupBytesRead,
+			cleanupError,
+			cleanupDescription,
+			cleanupMetadataJSON,
 			orderRefsJSON,
 			closeoutRefsJSON,
 			expectedEntryJSON,
@@ -406,8 +452,8 @@ func (s *SQLite) RecentSamples(ctx context.Context, since time.Time, limit int) 
 	rows, err := s.db.QueryContext(ctx, `
 SELECT completed_at, scheduled_at, sent_at, venue, run_id, scenario, transport, order_type, measurement_mode, iteration, batch_size,
        network_ns, raw_network_ns, adjusted_network_ns, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
-       cleanup_attempted, cleanup_ok, cleanup_prepared_ns, cleanup_start_delay_ns, cleanup_write_delay_ns,
-       order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
+       cleanup_attempted, cleanup_ok, cleanup_status_code, cleanup_duration_ns, cleanup_prepared_ns, cleanup_scheduled_at, cleanup_sent_at, cleanup_start_delay_ns, cleanup_write_delay_ns, cleanup_bytes_read, cleanup_error, cleanup_description,
+       cleanup_metadata_json, order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
 FROM samples
 WHERE completed_at >= ?
   AND transport != ''
@@ -432,9 +478,17 @@ LIMIT ?
 		var status string
 		var cleanupAttempted int
 		var cleanupOK int
+		var cleanupStatusCode int
+		var cleanupDurationNS int64
 		var cleanupPreparedNS int64
+		var cleanupScheduledAt string
+		var cleanupSentAt string
 		var cleanupStartDelayNS int64
 		var cleanupWriteDelayNS int64
+		var cleanupBytesRead int64
+		var cleanupError string
+		var cleanupDescription string
+		var cleanupMetadataJSON string
 		var orderRefsJSON string
 		var closeoutRefsJSON string
 		var expectedEntryJSON string
@@ -465,9 +519,17 @@ LIMIT ?
 			&sample.Classification.Reason,
 			&cleanupAttempted,
 			&cleanupOK,
+			&cleanupStatusCode,
+			&cleanupDurationNS,
 			&cleanupPreparedNS,
+			&cleanupScheduledAt,
+			&cleanupSentAt,
 			&cleanupStartDelayNS,
 			&cleanupWriteDelayNS,
+			&cleanupBytesRead,
+			&cleanupError,
+			&cleanupDescription,
+			&cleanupMetadataJSON,
 			&orderRefsJSON,
 			&closeoutRefsJSON,
 			&expectedEntryJSON,
@@ -499,9 +561,19 @@ LIMIT ?
 		sample.Cleanup = &bench.CleanupResult{
 			Attempted:    cleanupAttempted == 1,
 			OK:           cleanupOK == 1,
+			StatusCode:   cleanupStatusCode,
+			Error:        cleanupError,
+			DurationNS:   cleanupDurationNS,
 			PreparedNS:   cleanupPreparedNS,
+			ScheduledAt:  parseOptionalTime(cleanupScheduledAt),
+			SentAt:       parseOptionalTime(cleanupSentAt),
 			StartDelayNS: cleanupStartDelayNS,
 			WriteDelayNS: cleanupWriteDelayNS,
+			BytesRead:    cleanupBytesRead,
+			Description:  cleanupDescription,
+		}
+		if cleanupMetadataJSON != "" {
+			_ = json.Unmarshal([]byte(cleanupMetadataJSON), &sample.Cleanup.Metadata)
 		}
 		if metadataJSON != "" {
 			_ = json.Unmarshal([]byte(metadataJSON), &sample.Metadata)
@@ -637,6 +709,9 @@ func (s *SQLite) ensureColumn(ctx context.Context, column string, statement stri
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, statement)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return nil
+	}
 	return err
 }
 
@@ -652,11 +727,20 @@ func cleanupFields(cleanup *bench.CleanupResult) (int, int) {
 	return boolInt(cleanup.Attempted), boolInt(cleanup.OK)
 }
 
-func cleanupTimingFields(cleanup *bench.CleanupResult) (int64, int64, int64) {
+func cleanupStorageFields(cleanup *bench.CleanupResult) (int, int64, int64, string, string, int64, int64, int64, string, string) {
 	if cleanup == nil {
-		return 0, 0, 0
+		return 0, 0, 0, "", "", 0, 0, 0, "", ""
 	}
-	return cleanup.PreparedNS, cleanup.StartDelayNS, cleanup.WriteDelayNS
+	return cleanup.StatusCode,
+		cleanup.DurationNS,
+		cleanup.PreparedNS,
+		formatOptionalTime(cleanup.ScheduledAt),
+		formatOptionalTime(cleanup.SentAt),
+		cleanup.StartDelayNS,
+		cleanup.WriteDelayNS,
+		cleanup.BytesRead,
+		cleanup.Error,
+		cleanup.Description
 }
 
 func metadataJSON(metadata map[string]any) (string, error) {
@@ -668,6 +752,13 @@ func metadataJSON(metadata map[string]any) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func cleanupMetadataJSON(cleanup *bench.CleanupResult) (string, error) {
+	if cleanup == nil {
+		return "", nil
+	}
+	return metadataJSON(cleanup.Metadata)
 }
 
 func marshalJSON(value any) (string, error) {

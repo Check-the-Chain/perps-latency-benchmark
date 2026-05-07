@@ -1,9 +1,11 @@
 package cleanup
 
 import (
+	"net/http"
 	"testing"
 
 	"perps-latency-benchmark/internal/bench"
+	"perps-latency-benchmark/internal/payload"
 )
 
 func TestCleanupMetadataPreservesCleanupOrders(t *testing.T) {
@@ -58,5 +60,42 @@ func TestRetryableCleanupResult(t *testing.T) {
 				t.Fatalf("retryableCleanupResult() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCleanupRoutesPreferWebSocketThenHTTP(t *testing.T) {
+	body := "{}"
+	wsBody := `{"method":"post"}`
+	routes, ok, err := cleanupRoutes(payload.Request{}, payload.Built{
+		Body:   &body,
+		WSBody: &wsBody,
+	}, CommandConfig{
+		URL:   "https://example.test/cancel",
+		WSURL: "wss://example.test/ws",
+	}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || len(routes) != 2 {
+		t.Fatalf("routes = %#v ok=%v", routes, ok)
+	}
+	if routes[0].kind != cleanupRouteWebSocket || routes[1].kind != cleanupRouteHTTP {
+		t.Fatalf("route order = %#v", routes)
+	}
+}
+
+func TestCleanupRoutesAllowExplicitHTTPWithoutBody(t *testing.T) {
+	routes, ok, err := cleanupRoutes(payload.Request{}, payload.Built{
+		Method: "DELETE",
+		URL:    "https://example.test/cancel?id=1",
+	}, CommandConfig{}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || len(routes) != 1 || routes[0].kind != cleanupRouteHTTP {
+		t.Fatalf("routes = %#v ok=%v", routes, ok)
+	}
+	if routes[0].http.Method != "DELETE" || routes[0].http.URL == "" {
+		t.Fatalf("http route = %#v", routes[0].http)
 	}
 }

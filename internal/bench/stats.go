@@ -27,6 +27,10 @@ type Summary struct {
 	SubmissionP50MS float64        `json:"submission_p50_ms,omitempty"`
 	SubmissionP95MS float64        `json:"submission_p95_ms,omitempty"`
 	SubmissionP99MS float64        `json:"submission_p99_ms,omitempty"`
+	CleanupMeanMS   float64        `json:"cleanup_mean_ms,omitempty"`
+	CleanupP50MS    float64        `json:"cleanup_p50_ms,omitempty"`
+	CleanupP95MS    float64        `json:"cleanup_p95_ms,omitempty"`
+	CleanupP99MS    float64        `json:"cleanup_p99_ms,omitempty"`
 }
 
 type CleanupSummary struct {
@@ -40,9 +44,12 @@ func Summarize(samples []Sample) Summary {
 	hist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
 	rawHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
 	submissionHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
+	cleanupHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
 	var totalNS int64
 	var rawTotalNS int64
 	var speedBumpTotalNS int64
+	var cleanupTotalNS int64
+	var cleanupLatencyCount int
 	var ok int
 	var failed int
 	var cleanup CleanupSummary
@@ -56,6 +63,11 @@ func Summarize(samples []Sample) Summary {
 				cleanup.Attempted++
 				if sample.Cleanup.OK {
 					cleanup.OK++
+					if cancelNS, ok := CancelLatencyNS(sample); ok {
+						_ = cleanupHist.RecordValue(cancelNS)
+						cleanupTotalNS += cancelNS
+						cleanupLatencyCount++
+					}
 				} else {
 					cleanup.Failed++
 				}
@@ -86,11 +98,17 @@ func Summarize(samples []Sample) Summary {
 		}
 		totalNS += value
 		rawTotalNS += rawValue
-		speedBumpTotalNS += sample.SpeedBumpNS
+		speedBumpTotalNS += SpeedBumpNS(sample)
 		ok++
 	}
 
 	summary := Summary{Count: ok + failed, OK: ok, Failed: failed, Cleanup: cleanup}
+	if cleanupLatencyCount > 0 {
+		summary.CleanupMeanMS = nsToMS(cleanupTotalNS / int64(cleanupLatencyCount))
+		summary.CleanupP50MS = nsToMS(cleanupHist.ValueAtQuantile(50))
+		summary.CleanupP95MS = nsToMS(cleanupHist.ValueAtQuantile(95))
+		summary.CleanupP99MS = nsToMS(cleanupHist.ValueAtQuantile(99))
+	}
 	if ok == 0 {
 		return summary
 	}
@@ -120,7 +138,7 @@ func speedBumpSource(samples []Sample) string {
 		if sample.Warmup || !sample.OK {
 			continue
 		}
-		if source := strings.TrimSpace(sample.SpeedBumpSource); source != "" {
+		if source := SpeedBumpSource(sample); source != "" {
 			return source
 		}
 	}
@@ -154,11 +172,13 @@ func FormatSummary(result Result) string {
 	}
 	if summary.Cleanup.Attempted > 0 || summary.Cleanup.Skipped > 0 {
 		lines = append(lines, fmt.Sprintf(
-			"cleanup attempted=%d ok=%d failed=%d skipped=%d",
+			"cleanup attempted=%d ok=%d failed=%d skipped=%d p50_ms=%.3f p95_ms=%.3f",
 			summary.Cleanup.Attempted,
 			summary.Cleanup.OK,
 			summary.Cleanup.Failed,
 			summary.Cleanup.Skipped,
+			summary.CleanupP50MS,
+			summary.CleanupP95MS,
 		))
 	}
 	if result.StartupCleanup != nil {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"maps"
 	"strings"
 
@@ -39,15 +40,20 @@ func buildCleanupAdapter(venueName string, cfg fileConfig, client *netlatency.Cl
 		params["cancel_batch_url"] = batchURL
 	}
 	return cleanupadapter.NewCommandAdapter(cleanupadapter.CommandConfig{
-		Type:           command.Type,
-		Command:        command.Command,
-		Timeout:        timeout,
-		URL:            url,
-		StaticParams:   params,
-		Client:         client,
-		Classifier:     runtime.Definition.Classifier,
-		Description:    command.Description,
-		SkipNoRefs:     command.SkipNoRefs,
-		OrderRefsField: command.OrderRefsField,
+		Type:               command.Type,
+		Command:            command.Command,
+		Timeout:            timeout,
+		URL:                url,
+		WSURL:              cmp.Or(runtime.Request.WSURL, runtime.Config.WSURL, runtime.Definition.DefaultWSURL),
+		WSBatchURL:         cmp.Or(runtime.Request.WSBatchURL, runtime.Definition.DefaultWSBatchURL, runtime.Request.WSURL, runtime.Config.WSURL, runtime.Definition.DefaultWSURL),
+		WSReadInitial:      runtime.Definition.WSReadInitial,
+		WSHeartbeat:        netlatency.WebSocketHeartbeat{Message: []byte(runtime.Definition.WSHeartbeat.Message), IdleAfter: runtime.Definition.WSHeartbeat.IdleAfter, Timeout: runtime.Definition.WSHeartbeat.Timeout},
+		StaticParams:       params,
+		Client:             client,
+		Classifier:         runtime.Definition.Classifier,
+		CancelConfirmation: runtime.Definition.CancelConfirmation,
+		Description:        command.Description,
+		SkipNoRefs:         command.SkipNoRefs,
+		OrderRefsField:     command.OrderRefsField,
 	})
 }

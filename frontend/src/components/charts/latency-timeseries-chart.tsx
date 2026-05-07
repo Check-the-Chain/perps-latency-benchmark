@@ -8,7 +8,7 @@ import { ParentSize } from "@visx/responsive"
 import { scaleLinear, scaleLog, scaleTime } from "@visx/scale"
 import { LinePath } from "@visx/shape"
 import { TooltipWithBounds, useTooltip } from "@visx/tooltip"
-import { type PointerEvent, useMemo } from "react"
+import { type PointerEvent, useEffect, useId, useMemo, useState } from "react"
 
 import type { Sample } from "@/api/bench"
 import { samplePlotDate } from "@/lib/sample-time"
@@ -27,9 +27,17 @@ interface Series {
   venue: string
 }
 
+interface DisplaySeries extends Series {
+  linePoints: Array<Point>
+  outlierCount: number
+  rawPoints: Array<Point>
+}
+
 interface Point {
   date: Date
+  kind: "raw" | "rolling-median"
   ms: number
+  sampleCount?: number
 }
 
 interface HoverPoint {
@@ -39,6 +47,7 @@ interface HoverPoint {
 }
 
 export type LatencyScaleMode = "linear" | "log"
+type LatencyDisplayMode = "raw" | "trend" | "trend-raw"
 
 const COLORS = [
   "oklch(0.52 0.17 215)",
@@ -50,6 +59,7 @@ const COLORS = [
 ]
 
 const MARGIN = { top: 18, right: 20, bottom: 34, left: 62 }
+const ROLLING_MEDIAN_POINTS = 9
 
 export function LatencyTimeseriesChart({
   samples,
@@ -60,6 +70,9 @@ export function LatencyTimeseriesChart({
   onVenueSelectionChange,
   title = "Latency Timeline",
   description = "Confirmation latency over time by venue, transport, and order type.",
+  emptyMessage = "No latency data is available for the selected filters.",
+  valueForSample = confirmSampleMs,
+  valueLabel = "Latency",
 }: {
   samples: Array<Sample>
   scaleMode: LatencyScaleMode
@@ -69,36 +82,63 @@ export function LatencyTimeseriesChart({
   onVenueSelectionChange: (venues: "all" | Array<string>) => void
   title?: string
   description?: string
+  emptyMessage?: string
+  valueForSample?: (sample: Sample) => number | undefined
+  valueLabel?: string
 }) {
-  const series = useMemo(() => buildSeries(samples), [samples])
+  const [displayMode, setDisplayMode] =
+    useState<LatencyDisplayMode>("trend-raw")
+  const [hideOutliers, setHideOutliers] = useState(true)
+  const series = useMemo(
+    () => buildSeries(samples, valueForSample),
+    [samples, valueForSample]
+  )
+  const displaySeries = useMemo(
+    () =>
+      buildDisplaySeries(series, {
+        displayMode,
+        hideOutliers,
+      }),
+    [displayMode, hideOutliers, series]
+  )
   const domain = useMemo(
-    () => getDomains(series, scaleMode),
-    [scaleMode, series]
+    () => getDomains(displaySeries, scaleMode),
+    [displaySeries, scaleMode]
   )
 
   return (
     <section className="rounded-sm border border-border/80 bg-surface-1">
       <div className="border-b border-border/80 px-3 py-2">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-[min(100%,32rem)] flex-1">
             <h2 className="font-sans text-sm font-semibold">{title}</h2>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {description}
             </p>
           </div>
-          <ScaleToggle value={scaleMode} onChange={onScaleModeChange} />
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <DisplayModeToggle
+              value={displayMode}
+              onChange={setDisplayMode}
+            />
+            <OutlierToggle
+              checked={hideOutliers}
+              onChange={setHideOutliers}
+            />
+            <ScaleToggle value={scaleMode} onChange={onScaleModeChange} />
+          </div>
         </div>
         <ExchangeSelector
           selectedVenues={selectedVenues}
           venues={venues}
           onChange={onVenueSelectionChange}
         />
-        <SeriesLegend series={series} />
+        <SeriesLegend series={displaySeries} hideOutliers={hideOutliers} />
       </div>
       <div className="h-[360px] px-2 py-3">
-        {series.length === 0 || !domain ? (
+        {displaySeries.length === 0 || !domain ? (
           <div className="flex h-full items-center px-2 text-[11px] text-muted-foreground">
-            No latency data is available for the selected filters.
+            {emptyMessage}
           </div>
         ) : (
           <ParentSize>
@@ -106,8 +146,10 @@ export function LatencyTimeseriesChart({
               <LatencyFrame
                 domain={domain}
                 height={height}
+                displayMode={displayMode}
                 scaleMode={scaleMode}
-                series={series}
+                series={displaySeries}
+                valueLabel={valueLabel}
                 width={width}
               />
             )}
@@ -120,15 +162,19 @@ export function LatencyTimeseriesChart({
 
 function LatencyFrame({
   domain,
+  displayMode,
   height,
   scaleMode,
   series,
+  valueLabel,
   width,
 }: {
   domain: NonNullable<ReturnType<typeof getDomains>>
+  displayMode: LatencyDisplayMode
   height: number
   scaleMode: LatencyScaleMode
-  series: Array<Series>
+  series: Array<DisplaySeries>
+  valueLabel: string
   width: number
 }) {
   const {
@@ -139,11 +185,21 @@ function LatencyFrame({
     tooltipOpen,
     tooltipTop = 0,
   } = useTooltip<HoverPoint>()
+  useDismissTooltipOnViewportChange(hideTooltip)
+  useEffect(() => {
+    hideTooltip()
+  }, [displayMode, domain, height, hideTooltip, scaleMode, series, width])
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative h-full w-full"
+      onPointerLeave={hideTooltip}
+      onMouseLeave={hideTooltip}
+      onBlur={hideTooltip}
+    >
       <LatencySvg
         domain={domain}
+        displayMode={displayMode}
         height={height}
         hideTooltip={hideTooltip}
         scaleMode={scaleMode}
@@ -157,7 +213,7 @@ function LatencyFrame({
           top={tooltipTop}
           className="pointer-events-none z-10 w-[180px] max-w-[calc(100vw-2rem)] rounded-sm border border-border/80 bg-surface-1 px-2.5 py-2 text-[10px] shadow-sm"
         >
-          <PointTooltip hover={tooltipData} />
+          <PointTooltip hover={tooltipData} valueLabel={valueLabel} />
         </TooltipWithBounds>
       ) : null}
     </div>
@@ -166,6 +222,7 @@ function LatencyFrame({
 
 function LatencySvg({
   domain,
+  displayMode,
   hideTooltip,
   height,
   scaleMode,
@@ -174,10 +231,11 @@ function LatencySvg({
   width,
 }: {
   domain: NonNullable<ReturnType<typeof getDomains>>
+  displayMode: LatencyDisplayMode
   hideTooltip: () => void
   height: number
   scaleMode: LatencyScaleMode
-  series: Array<Series>
+  series: Array<DisplaySeries>
   showTooltip: (args: {
     tooltipData: HoverPoint
     tooltipLeft?: number
@@ -185,6 +243,9 @@ function LatencySvg({
   }) => void
   width: number
 }) {
+  const rawClipId = useId()
+  const clipId = rawClipId.replace(/:/g, "")
+
   if (width <= 0 || height <= 0) {
     return null
   }
@@ -241,6 +302,16 @@ function LatencySvg({
       onPointerCancel={hideTooltip}
       onBlur={hideTooltip}
     >
+      <defs>
+        <clipPath id={clipId}>
+          <rect
+            x={0}
+            y={0}
+            width={innerWidth}
+            height={innerHeight}
+          />
+        </clipPath>
+      </defs>
       <Group left={MARGIN.left} top={MARGIN.top}>
         <GridRows
           scale={yScale}
@@ -278,48 +349,107 @@ function LatencySvg({
           stroke="oklch(0.9 0.004 255)"
           tickStroke="oklch(0.9 0.004 255)"
         />
-        {series.map((item) => (
-          <Group key={item.key}>
-            <LinePath
-              data={item.points}
-              x={(point) => xScale(point.date)}
-              y={(point) => yScale(point.ms)}
-              stroke={item.color}
-              strokeDasharray={item.strokeDasharray}
-              strokeWidth={1.7}
-            />
-            {item.points.map((point) => (
-              <Group
-                key={`${point.date.toISOString()}:${point.ms}`}
-                onPointerEnter={(event) => showPointTooltip(event, item, point)}
-                onPointerMove={(event) => showPointTooltip(event, item, point)}
-                onPointerLeave={hideTooltip}
-              >
-                <circle
-                  cx={xScale(point.date)}
-                  cy={yScale(point.ms)}
-                  r={7}
-                  fill="transparent"
-                />
-                <circle
-                  cx={xScale(point.date)}
-                  cy={yScale(point.ms)}
-                  r={2.4}
-                  fill={item.color}
-                />
-              </Group>
-            ))}
-          </Group>
-        ))}
+        <Group clipPath={`url(#${clipId})`}>
+          <rect
+            width={innerWidth}
+            height={innerHeight}
+            fill="transparent"
+            onPointerEnter={hideTooltip}
+            onPointerMove={hideTooltip}
+          />
+          {series.map((item) => (
+            <Group key={item.key}>
+              {displayMode === "trend-raw"
+                ? item.rawPoints.map((point) => (
+                    <Group
+                      key={`${item.key}:raw:${point.date.toISOString()}:${point.ms}`}
+                      onPointerEnter={(event) =>
+                        showPointTooltip(event, item, point)
+                      }
+                      onPointerMove={(event) =>
+                        showPointTooltip(event, item, point)
+                      }
+                      onPointerLeave={hideTooltip}
+                    >
+                      <circle
+                        cx={xScale(point.date)}
+                        cy={yScale(point.ms)}
+                        r={6}
+                        fill="transparent"
+                      />
+                      <circle
+                        cx={xScale(point.date)}
+                        cy={yScale(point.ms)}
+                        r={1.8}
+                        fill={item.color}
+                        opacity={0.28}
+                      />
+                    </Group>
+                  ))
+                : null}
+              <LinePath
+                data={item.linePoints}
+                x={(point) => xScale(point.date)}
+                y={(point) => yScale(point.ms)}
+                pointerEvents="none"
+                stroke={item.color}
+                strokeDasharray={item.strokeDasharray}
+                strokeWidth={1.7}
+              />
+              {item.linePoints.map((point) => (
+                <Group
+                  key={`${item.key}:line:${point.date.toISOString()}:${point.ms}`}
+                  onPointerEnter={(event) =>
+                    showPointTooltip(event, item, point)
+                  }
+                  onPointerMove={(event) =>
+                    showPointTooltip(event, item, point)
+                  }
+                  onPointerLeave={hideTooltip}
+                >
+                  <circle
+                    cx={xScale(point.date)}
+                    cy={yScale(point.ms)}
+                    r={7}
+                    fill="transparent"
+                  />
+                  <circle
+                    cx={xScale(point.date)}
+                    cy={yScale(point.ms)}
+                    r={2.4}
+                    fill={item.color}
+                    opacity={displayMode === "trend-raw" ? 0 : 1}
+                  />
+                </Group>
+              ))}
+            </Group>
+          ))}
+        </Group>
       </Group>
     </svg>
   )
 }
 
+function useDismissTooltipOnViewportChange(hideTooltip: () => void) {
+  useEffect(() => {
+    window.addEventListener("scroll", hideTooltip, true)
+    window.addEventListener("resize", hideTooltip)
+    window.addEventListener("blur", hideTooltip)
+
+    return () => {
+      window.removeEventListener("scroll", hideTooltip, true)
+      window.removeEventListener("resize", hideTooltip)
+      window.removeEventListener("blur", hideTooltip)
+    }
+  }, [hideTooltip])
+}
+
 function PointTooltip({
   hover,
+  valueLabel,
 }: {
   hover: HoverPoint
+  valueLabel: string
 }) {
   return (
     <>
@@ -335,13 +465,75 @@ function PointTooltip({
       </div>
       <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1">
         <span className="-mx-1 rounded-sm bg-surface-2 px-1 py-0.5 font-bold text-foreground">
-          Latency
+          {hover.point.kind === "rolling-median" ? "Rolling median" : valueLabel}
         </span>
         <span className="-mx-1 rounded-sm bg-surface-2 px-1 py-0.5 font-mono font-bold text-foreground">
           {formatLatency(hover.point.ms)}
         </span>
+        {hover.point.sampleCount ? (
+          <>
+            <span className="text-muted-foreground">Window</span>
+            <span className="font-mono text-muted-foreground">
+              {hover.point.sampleCount} samples
+            </span>
+          </>
+        ) : null}
       </div>
     </>
+  )
+}
+
+function DisplayModeToggle({
+  value,
+  onChange,
+}: {
+  value: LatencyDisplayMode
+  onChange: (value: LatencyDisplayMode) => void
+}) {
+  const modes: Array<{ label: string; value: LatencyDisplayMode }> = [
+    { label: "Raw", value: "raw" },
+    { label: "Trend", value: "trend" },
+    { label: "Trend + raw", value: "trend-raw" },
+  ]
+
+  return (
+    <div className="flex h-8 overflow-hidden rounded-sm border border-border bg-surface-1 text-[11px]">
+      {modes.map((mode) => (
+        <button
+          key={mode.value}
+          type="button"
+          onClick={() => onChange(mode.value)}
+          className={`px-2.5 ${
+            value === mode.value
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+          }`}
+          aria-pressed={value === mode.value}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function OutlierToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex h-8 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface-1 px-2 text-[11px] text-muted-foreground hover:bg-surface-2 hover:text-foreground">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        className="size-3 accent-[var(--primary)]"
+      />
+      <span>Hide outliers</span>
+    </label>
   )
 }
 
@@ -436,7 +628,13 @@ function ExchangeSelector({
   )
 }
 
-function SeriesLegend({ series }: { series: Array<Series> }) {
+function SeriesLegend({
+  hideOutliers,
+  series,
+}: {
+  hideOutliers: boolean
+  series: Array<DisplaySeries>
+}) {
   if (series.length === 0) {
     return null
   }
@@ -461,15 +659,23 @@ function SeriesLegend({ series }: { series: Array<Series> }) {
           </svg>
           <span className="max-w-[240px] truncate">{item.label}</span>
           <span className="font-mono text-[9px] text-muted-foreground/80">
-            {item.points.length} pts
+            {item.rawPoints.length || item.linePoints.length} pts
           </span>
+          {hideOutliers && item.outlierCount > 0 ? (
+            <span className="font-mono text-[9px] text-muted-foreground/80">
+              {item.outlierCount} hidden
+            </span>
+          ) : null}
         </div>
       ))}
     </div>
   )
 }
 
-function buildSeries(samples: Array<Sample>): Array<Series> {
+function buildSeries(
+  samples: Array<Sample>,
+  valueForSample: (sample: Sample) => number | undefined
+): Array<Series> {
   const grouped = new Map<string, Array<Point>>()
   const metadata = new Map<
     string,
@@ -492,8 +698,8 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
       continue
     }
 
-    const ms = confirmSampleMs(sample)
-    if (!Number.isFinite(ms) || ms <= 0) {
+    const ms = valueForSample(sample)
+    if (ms === undefined || !Number.isFinite(ms) || ms <= 0) {
       continue
     }
 
@@ -509,6 +715,7 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
     const points = grouped.get(key) ?? []
     points.push({
       date,
+      kind: "raw",
       ms,
     })
     grouped.set(key, points)
@@ -543,8 +750,96 @@ function buildSeries(samples: Array<Sample>): Array<Series> {
     .sort((left, right) => left.label.localeCompare(right.label))
 }
 
-function getDomains(series: Array<Series>, scaleMode: LatencyScaleMode) {
-  const points = series.flatMap((item) => item.points)
+function buildDisplaySeries(
+  series: Array<Series>,
+  {
+    displayMode,
+    hideOutliers,
+  }: {
+    displayMode: LatencyDisplayMode
+    hideOutliers: boolean
+  }
+): Array<DisplaySeries> {
+  return series
+    .map((item) => {
+      const { outlierCount, points: visibleRawPoints } = hideOutliers
+        ? withoutUpperOutliers(item.points)
+        : { outlierCount: 0, points: item.points }
+      const trendPoints = rollingMedian(item.points, ROLLING_MEDIAN_POINTS)
+
+      return {
+        ...item,
+        linePoints: displayMode === "raw" ? visibleRawPoints : trendPoints,
+        outlierCount,
+        rawPoints: displayMode === "trend-raw" ? visibleRawPoints : [],
+      }
+    })
+    .filter((item) => item.linePoints.length > 0 || item.rawPoints.length > 0)
+}
+
+function rollingMedian(points: Array<Point>, windowSize: number): Array<Point> {
+  if (points.length === 0) {
+    return []
+  }
+
+  return points.map((point, index) => {
+    const start = Math.max(0, index - windowSize + 1)
+    const window = points.slice(start, index + 1)
+    return {
+      date: point.date,
+      kind: "rolling-median",
+      ms: median(window.map((item) => item.ms)),
+      sampleCount: window.length,
+    }
+  })
+}
+
+function withoutUpperOutliers(points: Array<Point>) {
+  if (points.length < 8) {
+    return { outlierCount: 0, points }
+  }
+
+  const values = points.map((point) => point.ms).sort((a, b) => a - b)
+  const q1 = quantile(values, 0.25)
+  const q3 = quantile(values, 0.75)
+  const iqr = q3 - q1
+  const upperFence = iqr > 0 ? q3 + 1.5 * iqr : q3 * 3
+  const filtered = points.filter((point) => point.ms <= upperFence)
+
+  return {
+    outlierCount: points.length - filtered.length,
+    points: filtered,
+  }
+}
+
+function median(values: Array<number>) {
+  return quantile(
+    [...values].sort((a, b) => a - b),
+    0.5
+  )
+}
+
+function quantile(sortedValues: Array<number>, q: number) {
+  if (sortedValues.length === 0) {
+    return Number.NaN
+  }
+  if (sortedValues.length === 1) {
+    return sortedValues[0]
+  }
+
+  const index = (sortedValues.length - 1) * q
+  const lower = Math.floor(index)
+  const upper = Math.ceil(index)
+  const weight = index - lower
+
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight
+}
+
+function getDomains(series: Array<DisplaySeries>, scaleMode: LatencyScaleMode) {
+  const points = series.flatMap((item) => [
+    ...item.linePoints,
+    ...item.rawPoints,
+  ])
 
   if (points.length === 0) {
     return null
@@ -603,7 +898,9 @@ function stableLogTicks(
 
   for (const value of candidates.sort((left, right) => right - left)) {
     const y = position(value)
-    const hasRoom = selected.every((existing) => Math.abs(position(existing) - y) >= minGap)
+    const hasRoom = selected.every(
+      (existing) => Math.abs(position(existing) - y) >= minGap
+    )
     if (hasRoom) {
       selected.push(value)
     }

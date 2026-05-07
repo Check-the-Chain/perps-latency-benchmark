@@ -29,4 +29,49 @@
     "PERPS_BENCH_API_USER": "bench",
     "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
   },
+  "env": {
+    "staging": {
+      "name": "perps-latency-dashboard-staging",
+      "workers_dev": true,
+      "routes": [],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 0.1,
+      },
+      "secrets": {
+        "required": [
+          "PERPS_BENCH_API_URL",
+          "PERPS_BENCH_API_PASSWORD",
+        ],
+      },
+      "vars": {
+        "PERPS_BENCH_API_USER": "bench",
+        "PERPS_BENCH_PUBLIC_SITE_URL": "https://perps-latency-dashboard-staging.workers.dev",
+      },
+    },
+    "production": {
+      "name": "perps-latency-dashboard",
+      "routes": [
+        {
+          "pattern": "latency.perps.trading",
+          "custom_domain": true,
+        },
+      ],
+      "workers_dev": false,
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 0.1,
+      },
+      "secrets": {
+        "required": [
+          "PERPS_BENCH_API_URL",
+          "PERPS_BENCH_API_PASSWORD",
+        ],
+      },
+      "vars": {
+        "PERPS_BENCH_API_USER": "bench",
+        "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
+      },
+    },
+  },
 }

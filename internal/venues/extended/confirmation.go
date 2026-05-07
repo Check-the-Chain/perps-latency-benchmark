@@ -45,6 +45,38 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	}, nil
 }
 
+func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
+	raw, ok := built.Metadata["cancel_confirmation"].(map[string]any)
+	if !ok || confirmutil.Text(raw["venue"]) != "extended" {
+		return nil, nil
+	}
+	wsURL := confirmutil.Text(raw["ws_url"])
+	apiKey := confirmutil.Text(raw["api_key"])
+	if wsURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("extended cancel confirmation metadata missing ws_url or api_key")
+	}
+	externalIDs := confirmutil.IDSet(raw["external_ids"])
+	if len(externalIDs) == 0 {
+		return nil, fmt.Errorf("extended cancel confirmation metadata missing external_ids")
+	}
+	headers := http.Header{}
+	headers.Set("X-Api-Key", apiKey)
+	headers.Set("User-Agent", "perps-latency-benchmark")
+	client, err := confirmws.Dial(ctx, wsURL, headers, false)
+	if err != nil {
+		return nil, err
+	}
+	return &bench.Confirmation{
+		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
+			remaining := copyIDSet(externalIDs)
+			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
+				return matchExtendedCancelConfirmation(msg, remaining), nil
+			})
+		},
+		Close: client.Close,
+	}, nil
+}
+
 func matchExtendedConfirmation(msg map[string]any, externalIDs map[string]struct{}, orderType string) (bool, error) {
 	data := confirmutil.Object(msg["data"])
 	for _, trade := range confirmutil.ObjectList(data["trades"]) {
@@ -74,6 +106,21 @@ func matchExtendedConfirmation(msg map[string]any, externalIDs map[string]struct
 	return false, nil
 }
 
+func matchExtendedCancelConfirmation(msg map[string]any, remaining map[string]struct{}) bool {
+	data := confirmutil.Object(msg["data"])
+	for _, order := range confirmutil.ObjectList(data["orders"]) {
+		id := firstMatchingID(remaining, order["externalId"], order["external_id"])
+		if id == "" {
+			continue
+		}
+		status := strings.ToLower(confirmutil.Text(order["status"]))
+		if status == "cancelled" || status == "canceled" {
+			delete(remaining, id)
+		}
+	}
+	return len(remaining) == 0
+}
+
 func isExtendedTerminalFailure(status string) bool {
 	switch status {
 	case "rejected", "cancelled", "canceled", "expired", "failed":
@@ -81,4 +128,22 @@ func isExtendedTerminalFailure(status string) bool {
 	default:
 		return false
 	}
+}
+
+func copyIDSet(ids map[string]struct{}) map[string]struct{} {
+	copied := make(map[string]struct{}, len(ids))
+	for id := range ids {
+		copied[id] = struct{}{}
+	}
+	return copied
+}
+
+func firstMatchingID(ids map[string]struct{}, values ...any) string {
+	for _, value := range values {
+		id := confirmutil.Text(value)
+		if _, ok := ids[id]; ok {
+			return id
+		}
+	}
+	return ""
 }

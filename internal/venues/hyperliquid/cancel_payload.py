@@ -106,10 +106,23 @@ def cancel_payload(orders: list[dict[str, Any]], builder_params: dict[str, Any],
         "vaultAddress": builder_params.get("vault_address"),
         "expiresAfter": builder_params.get("expires_after"),
     }
+    ws_payload = {
+        "method": "post",
+        "id": builder_params.get("cleanup_request_id", nonce),
+        "request": {"type": "action", "payload": payload},
+    }
+    reconciliation = dict(metadata or {})
+    cancel_confirmation = {
+        "venue": "hyperliquid",
+        "ws_url": builder_params.get("ws_url", "wss://api.hyperliquid.xyz/ws"),
+        "user": wallet.address,
+        "cloids": [str(order["cloid"]) for order in orders],
+    }
     return {
         "headers": {"Content-Type": "application/json"},
         "body": compact_json(payload),
-        "metadata": {"cleanup": "cancelByCloid", "orders": len(orders), "nonce": nonce, "reconciliation": metadata or {}},
+        "ws_body": compact_json(ws_payload),
+        "metadata": {"cleanup": "cancelByCloid", "orders": len(orders), "nonce": nonce, "cancel_confirmation": cancel_confirmation, "reconciliation": reconciliation},
     }
 
 

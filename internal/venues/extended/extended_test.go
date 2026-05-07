@@ -92,3 +92,23 @@ func TestMatchExtendedConfirmationByTradeExternalID(t *testing.T) {
 		t.Fatal("expected trade confirmation match")
 	}
 }
+
+func TestMatchExtendedCancelConfirmationWaitsForAllOrders(t *testing.T) {
+	remaining := map[string]struct{}{"pb-1": {}, "pb-2": {}}
+	first := matchExtendedCancelConfirmation(map[string]any{
+		"data": map[string]any{
+			"orders": []any{map[string]any{"externalId": "pb-1", "status": "CANCELLED"}},
+		},
+	}, remaining)
+	if first {
+		t.Fatal("expected first cancel update to leave one order outstanding")
+	}
+	second := matchExtendedCancelConfirmation(map[string]any{
+		"data": map[string]any{
+			"orders": []any{map[string]any{"external_id": "pb-2", "status": "canceled"}},
+		},
+	}, remaining)
+	if !second {
+		t.Fatalf("expected all cancels confirmed, remaining = %#v", remaining)
+	}
+}

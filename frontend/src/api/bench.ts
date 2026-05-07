@@ -34,6 +34,10 @@ export interface SummaryRow {
   submission_p50_ms?: number
   submission_p95_ms?: number
   submission_p99_ms?: number
+  cleanup_mean_ms?: number
+  cleanup_p50_ms?: number
+  cleanup_p95_ms?: number
+  cleanup_p99_ms?: number
   cleanup_ok: number
   cleanup_failed: number
   cost_count?: number
@@ -46,8 +50,19 @@ export interface SamplesResponse {
 }
 
 export interface CleanupResult {
+  attempted?: boolean
   ok: boolean
+  status_code?: number
+  duration_ns?: number
+  prepared_ns?: number
+  scheduled_at?: string
+  sent_at?: string
+  start_delay_ns?: number
+  write_delay_ns?: number
+  bytes_read?: number
   error?: string
+  description?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface SampleCost {

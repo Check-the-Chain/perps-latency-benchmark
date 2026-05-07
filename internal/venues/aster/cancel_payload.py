@@ -14,7 +14,7 @@ from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from cleanup_common import cleanup_orders_for_venue, cleanup_result, result_orders_for_venue
-from build_payload import client_order_id, compact_json, load_signer
+from build_payload import DEFAULT_WS_BASE_URL, cached_listen_key, client_order_id, compact_json, load_signer
 
 
 DEFAULT_BASE_URL = "https://fapi.asterdex.com"
@@ -42,6 +42,7 @@ def build(req: dict[str, Any]) -> dict[str, Any]:
 
 class AsterClient:
     def __init__(self, params: dict[str, Any]):
+        self.params = params
         self.base_url = str(params.get("base_url", DEFAULT_BASE_URL)).rstrip("/")
         self.signer = load_signer(params)
         self.timeout = float(params.get("cleanup_request_timeout_seconds", 10))
@@ -80,6 +81,29 @@ class AsterClient:
 
     def cancel_order(self, symbol: str, client_order_id: str) -> tuple[int, Any]:
         return self.signed("DELETE", "/fapi/v3/order", {"symbol": symbol, "origClientOrderId": client_order_id})
+
+    def cancel_order_body(self, symbol: str, client_order_id: str) -> str:
+        return self.signer.sign({"symbol": symbol, "origClientOrderId": client_order_id})
+
+    def cancel_batch_body(self, refs: list[dict[str, str]]) -> str:
+        symbols = {ref["symbol"] for ref in refs}
+        if len(symbols) != 1:
+            raise SystemExit("Aster batch cancel requires one symbol per request")
+        client_ids = [ref["client_order_id"] for ref in refs]
+        return self.signer.sign({"symbol": next(iter(symbols)), "origClientOrderIdList": compact_json(client_ids)})
+
+    def cancel_confirmation(self, refs: list[dict[str, str]]) -> dict[str, Any]:
+        if self.params.get("cancel_confirmation") is False:
+            return {}
+        listen_key = str(self.params.get("listen_key") or cached_listen_key(self.params, self.signer))
+        ws_base = str(self.params.get("ws_url") or self.params.get("ws_base_url") or DEFAULT_WS_BASE_URL).rstrip("/")
+        ws_url = ws_base + "/" + listen_key if ws_base.endswith("/ws") else ws_base + "/ws/" + listen_key
+        return {
+            "venue": "aster",
+            "ws_url": ws_url,
+            "listen_key": listen_key,
+            "client_order_ids": [ref["client_order_id"] for ref in refs],
+        }
 
     def create_market_order(self, symbol: str, side: str, quantity: Decimal) -> tuple[int, Any]:
         body = self.market_order_body(symbol, side, quantity)
@@ -140,7 +164,7 @@ def before_run(client: AsterClient, params: dict[str, Any], builder_params: dict
         refs = planned_orders(params, builder_params)
         refs = open_cleanup_orders(client, refs, builder_params)
     if refs:
-        cancelled = cancel_orders(client, refs, metadata)
+        cancelled = execute_cancel_orders(client, refs, metadata)
         cancelled_result = dict(cancelled.get("cleanup") or {})
         if not bool(cancelled_result.get("ok")):
             return cancelled
@@ -180,21 +204,41 @@ def after_sample(client: AsterClient, params: dict[str, Any], builder_params: di
         return cleanup_result(False, True, "no Aster cleanup_orders")
     remaining = wait_open_cleanup_orders(client, refs, builder_params)
     if remaining:
-        return cancel_orders(client, remaining, {})
+        return cancel_request(client, remaining, {})
     neutralize = neutralize_position(client, params, builder_params)
     if neutralize:
         return neutralize
     return cleanup_result(False, True, "no Aster cleanup action needed")
 
 
-def cancel_orders(client: AsterClient, refs: list[dict[str, Any]], metadata: dict[str, Any]) -> dict[str, Any]:
+def cancel_request(client: AsterClient, refs: list[dict[str, Any]], metadata: dict[str, Any]) -> dict[str, Any]:
+    orders = normalized_cancel_refs(refs)
+    if not orders:
+        return cleanup_result(False, True, "no Aster orders to cancel", metadata=metadata)
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    if len(orders) == 1:
+        order = orders[0]
+        return {
+            "method": "DELETE",
+            "headers": headers,
+            "body": client.cancel_order_body(order["symbol"], order["client_order_id"]),
+            "metadata": {"cleanup": "cancel_order", "orders": 1, "cancel_confirmation": client.cancel_confirmation(orders), **metadata},
+        }
+    return {
+        "method": "DELETE",
+        "url": client.base_url + "/fapi/v3/batchOrders",
+        "headers": headers,
+        "body": client.cancel_batch_body(orders),
+        "metadata": {"cleanup": "cancel_batch_orders", "orders": len(orders), "cancel_confirmation": client.cancel_confirmation(orders), **metadata},
+    }
+
+
+def execute_cancel_orders(client: AsterClient, refs: list[dict[str, Any]], metadata: dict[str, Any]) -> dict[str, Any]:
     failed = []
     attempted = False
-    for ref in refs:
-        symbol = str(ref.get("symbol") or "")
-        client_id = str(ref.get("client_order_id") or "")
-        if not symbol or not client_id:
-            continue
+    for ref in normalized_cancel_refs(refs):
+        symbol = ref["symbol"]
+        client_id = ref["client_order_id"]
         attempted = True
         status, body = client.cancel_order(symbol, client_id)
         if status == 400 and isinstance(body, dict) and int(body.get("code") or 0) == -2011:
@@ -204,6 +248,16 @@ def cancel_orders(client: AsterClient, refs: list[dict[str, Any]], metadata: dic
     if failed:
         return cleanup_result(True, False, "; ".join(failed), metadata=metadata)
     return cleanup_result(attempted, True, "cancel Aster benchmark orders by client order ID", metadata=metadata)
+
+
+def normalized_cancel_refs(refs: list[dict[str, Any]]) -> list[dict[str, str]]:
+    orders = []
+    for ref in refs:
+        symbol = str(ref.get("symbol") or "").upper()
+        client_id = str(ref.get("client_order_id") or "")
+        if symbol and client_id:
+            orders.append({"symbol": symbol, "client_order_id": client_id})
+    return orders
 
 
 def planned_orders(params: dict[str, Any], builder_params: dict[str, Any]) -> list[dict[str, Any]]:

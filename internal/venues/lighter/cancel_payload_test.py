@@ -39,6 +39,30 @@ class LighterCancelPayloadTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cancel_payload.neutralize_base_amount(Decimal("0.000001"), {"base_amount_decimals": 5})
 
+    def test_cancel_orders_include_websocket_batch_payload(self):
+        class Client:
+            def create_auth_token_with_expiry(self, **_kwargs):
+                return "auth", None
+
+            def sign_cancel_order(self, **_kwargs):
+                return 14, '{"order":"cancel"}', "", None
+
+        built = asyncio.run(cancel_payload.cancel_orders(
+            Client(),
+            [
+                {"market_index": 1, "order_index": 11},
+                {"market_index": 1, "order_index": 12},
+            ],
+            {"cleanup_nonce": 100, "account_index": 7, "market_index": 1},
+            2,
+            {},
+        ))
+
+        decoded = cancel_payload.json.loads(built["ws_body"])
+        self.assertEqual(decoded["type"], "jsonapi/sendtxbatch")
+        self.assertEqual(built["metadata"]["orders"], 2)
+        self.assertEqual(built["metadata"]["cancel_confirmation"]["order_indices"], [11, 12])
+
     def test_cleanup_builder_uses_prefixed_account_environment(self):
         old_env = {key: os.environ.get(key) for key in (
             "LIGHTER_ACCOUNT_INDEX",
