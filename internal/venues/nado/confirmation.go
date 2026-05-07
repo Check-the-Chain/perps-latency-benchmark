@@ -14,6 +14,13 @@ import (
 	"perps-latency-benchmark/internal/venues/confirmutil"
 )
 
+type nadoSubscriptionPlan struct {
+	wsURL      string
+	subaccount string
+	productID  any
+	auth       map[string]any
+}
+
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
 	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
 		Key:      "confirmation",
@@ -24,22 +31,24 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	if !ok || err != nil {
 		return nil, err
 	}
-	auth, ok := plan.Raw["auth"].(map[string]any)
-	if !ok || len(auth) == 0 {
-		return nil, fmt.Errorf("nado confirmation metadata missing subscription auth")
-	}
-	client, err := dialOrderUpdates(ctx, plan.WSURL, auth, plan.Text("subaccount"), plan.Raw["product_id"])
+	subscription, err := nadoSubscriptionFromPlan(plan, "confirmation")
 	if err != nil {
+		return nil, err
+	}
+	feed := sharedNadoFeed(subscription)
+	if err := feed.ensure(ctx, subscription.auth); err != nil {
 		return nil, err
 	}
 	orderType := strings.ToLower(plan.Order)
 	return &bench.Confirmation{
 		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
+			if err := feed.ensure(ctx, subscription.auth); err != nil {
+				return netlatency.Result{}, err
+			}
+			return feed.wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
 				return matchNadoConfirmation(msg, plan.IDs, orderType)
 			})
 		},
-		Close: client.Close,
 	}, nil
 }
 
@@ -53,22 +62,37 @@ func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Co
 	if !ok || err != nil {
 		return nil, err
 	}
-	auth, ok := plan.Raw["auth"].(map[string]any)
-	if !ok || len(auth) == 0 {
-		return nil, fmt.Errorf("nado cancel confirmation metadata missing auth")
-	}
-	client, err := dialOrderUpdates(ctx, plan.WSURL, auth, plan.Text("subaccount"), plan.Raw["product_id"])
+	subscription, err := nadoSubscriptionFromPlan(plan, "cancel confirmation")
 	if err != nil {
+		return nil, err
+	}
+	feed := sharedNadoFeed(subscription)
+	if err := feed.ensure(ctx, subscription.auth); err != nil {
 		return nil, err
 	}
 	remaining := confirmutil.CopyIDSet(plan.IDs)
 	return &bench.Confirmation{
 		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
+			if err := feed.ensure(ctx, subscription.auth); err != nil {
+				return netlatency.Result{}, err
+			}
+			return feed.wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
 				return matchNadoCancelConfirmation(msg, remaining), nil
 			})
 		},
-		Close: client.Close,
+	}, nil
+}
+
+func nadoSubscriptionFromPlan(plan accountfeed.Plan, label string) (nadoSubscriptionPlan, error) {
+	auth, ok := plan.Raw["auth"].(map[string]any)
+	if !ok || len(auth) == 0 {
+		return nadoSubscriptionPlan{}, fmt.Errorf("nado %s metadata missing auth", label)
+	}
+	return nadoSubscriptionPlan{
+		wsURL:      plan.WSURL,
+		subaccount: plan.Text("subaccount"),
+		productID:  plan.Raw["product_id"],
+		auth:       auth,
 	}, nil
 }
 

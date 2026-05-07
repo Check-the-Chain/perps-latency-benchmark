@@ -157,16 +157,15 @@ func (c *Client) StartPingFrames(interval time.Duration, timeout time.Duration) 
 
 func (c *Client) Wait(ctx context.Context, start time.Time, match func(map[string]any) (bool, error)) (netlatency.Result, error) {
 	for {
-		data, receivedAt, err := c.readRaw(ctx)
+		decoded, data, receivedAt, err := c.ReadJSON(ctx)
 		if err != nil {
+			if len(data) > 0 {
+				return result(start, receivedAt, int64(len(data)), data), err
+			}
 			return result(start, time.Now(), 0, nil), err
 		}
 		if int64(len(data)) > c.readLimit {
 			return result(start, receivedAt, int64(len(data)), data), fmt.Errorf("websocket confirmation exceeded read limit: %d", len(data))
-		}
-		var decoded map[string]any
-		if err := json.Unmarshal(data, &decoded); err != nil {
-			continue
 		}
 		ok, err := match(decoded)
 		if err != nil {
@@ -175,6 +174,23 @@ func (c *Client) Wait(ctx context.Context, start time.Time, match func(map[strin
 		if ok {
 			return result(start, receivedAt, int64(len(data)), data), nil
 		}
+	}
+}
+
+func (c *Client) ReadJSON(ctx context.Context) (map[string]any, []byte, time.Time, error) {
+	for {
+		data, receivedAt, err := c.readRaw(ctx)
+		if err != nil {
+			return nil, nil, receivedAt, err
+		}
+		if int64(len(data)) > c.readLimit {
+			return nil, data, receivedAt, fmt.Errorf("websocket confirmation exceeded read limit: %d", len(data))
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			continue
+		}
+		return decoded, data, receivedAt, nil
 	}
 }
 
