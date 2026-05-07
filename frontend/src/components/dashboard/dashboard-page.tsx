@@ -32,6 +32,7 @@ import {
   formatTime,
 } from "@/lib/format"
 import { cancelSampleMs, confirmP50, confirmP95 } from "@/lib/latency-metric"
+import { buildSummaryRows } from "@/lib/sample-summary"
 
 const HIDDEN_FRONTEND_VENUES = new Set(["edgex"])
 const GITHUB_URL = "https://github.com/Check-the-Chain/perps-latency-benchmark"
@@ -49,15 +50,14 @@ export function DashboardPage() {
   const health = useQuery(healthQueryOptions())
   const latest = useQuery(latestQueryOptions(filters.window))
   const samples = useQuery(samplesQueryOptions(filters.window))
-  const summaries = latest.data?.summaries ?? []
   const measurements = samples.data?.samples ?? []
-  const visibleSummaries = useMemo(
-    () => summaries.filter((row) => isVisibleVenue(row.venue)),
-    [summaries]
-  )
   const visibleMeasurements = useMemo(
     () => measurements.filter((sample) => isVisibleVenue(sample.venue)),
     [measurements]
+  )
+  const visibleSummaries = useMemo(
+    () => buildSummaryRows(visibleMeasurements),
+    [visibleMeasurements]
   )
   const postOnlySourceSamples = useMemo(
     () =>
