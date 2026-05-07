@@ -51,7 +51,6 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
               >
                 Displayed p95
               </SortableHeaderCell>
-              <HeaderCell align="right">Raw p50</HeaderCell>
               <HeaderCell align="right">Cancel p50</HeaderCell>
               <HeaderCell align="right">Cancel p95</HeaderCell>
               <HeaderCell align="right">Cost/run</HeaderCell>
@@ -62,7 +61,7 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={16} className="px-3 py-8 text-muted-foreground">
+                <td colSpan={15} className="px-3 py-8 text-muted-foreground">
                   No latency data is available for the selected filters.
                 </td>
               </tr>
@@ -82,7 +81,6 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
                   <BodyCell align="right">{formatCount(row.ok)}</BodyCell>
                   <BodyCell align="right">{formatLatency(confirmP50(row))}</BodyCell>
                   <BodyCell align="right">{formatLatency(confirmP95(row))}</BodyCell>
-                  <BodyCell align="right">{formatLatency(row.raw_p50_ms)}</BodyCell>
                   <BodyCell align="right">{formatLatency(cancelP50(row))}</BodyCell>
                   <BodyCell align="right">{formatLatency(cancelP95(row))}</BodyCell>
                   <BodyCell align="right">{formatUSD(row.cost_mean_usd)}</BodyCell>
