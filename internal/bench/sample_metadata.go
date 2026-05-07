@@ -12,10 +12,7 @@ func OrderRefsFromMetadata(metadata map[string]any, key string) []OrderRef {
 	if !ok || raw == nil {
 		return nil
 	}
-	values, ok := raw.([]any)
-	if !ok {
-		return nil
-	}
+	values := metadataList(raw)
 	refs := make([]OrderRef, 0, len(values))
 	for _, value := range values {
 		item, ok := value.(map[string]any)
@@ -41,6 +38,21 @@ func OrderRefsFromMetadata(metadata map[string]any, key string) []OrderRef {
 		}
 	}
 	return refs
+}
+
+func metadataList(raw any) []any {
+	switch typed := raw.(type) {
+	case []any:
+		return typed
+	case []map[string]any:
+		values := make([]any, len(typed))
+		for i, value := range typed {
+			values[i] = value
+		}
+		return values
+	default:
+		return nil
+	}
 }
 
 func OrderRefsToMetadata(refs []OrderRef) []map[string]any {

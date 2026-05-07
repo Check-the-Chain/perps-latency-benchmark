@@ -14,15 +14,16 @@ import (
 )
 
 type CoordinatedItem struct {
-	Config      Config
-	Client      *netlatency.Client
-	Venue       Venue
-	Cleanup     CleanupAdapter
-	SpinLead    time.Duration
-	LockThreads bool
-	Book        *booktop.Tracker
-	OrderSide   string
-	OrderSize   float64
+	Config          Config
+	Client          *netlatency.Client
+	Venue           Venue
+	Cleanup         CleanupAdapter
+	NetworkBaseline NetworkBaselineObserver
+	SpinLead        time.Duration
+	LockThreads     bool
+	Book            *booktop.Tracker
+	OrderSide       string
+	OrderSize       float64
 }
 
 type CoordinatedCycle struct {
@@ -82,22 +83,10 @@ func BeforeCoordinatedRun(ctx context.Context, items []CoordinatedItem, runID st
 	for _, item := range items {
 		cfg := item.Config.Normalized()
 		cfg.RunID = runID
-		if item.Cleanup == nil || !cfg.Cleanup.Enabled {
-			continue
+		cleanup := newBenchmarkLifecycle(cfg, item.Venue, item.Cleanup).beforeRun(ctx)
+		if cleanup != nil {
+			results[item.Venue.Name()] = cleanup
 		}
-		hooks, ok := item.Cleanup.(RunCleanupAdapter)
-		if !ok {
-			continue
-		}
-		cleanup := hooks.BeforeRun(ctx, CleanupRun{
-			Venue:      item.Venue.Name(),
-			RunID:      cfg.RunID,
-			Scenario:   cfg.Scenario,
-			Iterations: cfg.Iterations,
-			Warmups:    cfg.Warmups,
-			BatchSize:  cfg.BatchSize,
-		})
-		results[item.Venue.Name()] = &cleanup
 	}
 	return results
 }
@@ -111,23 +100,12 @@ func AfterCoordinatedRun(ctx context.Context, items []CoordinatedItem, runID str
 	for _, item := range items {
 		cfg := item.Config.Normalized()
 		cfg.RunID = runID
-		if item.Cleanup == nil || !cfg.Cleanup.Enabled {
-			continue
+		lifecycle := newBenchmarkLifecycle(cfg, item.Venue, item.Cleanup)
+		result := lifecycle.result(byVenue[item.Venue.Name()])
+		cleanup := lifecycle.afterRun(ctx, result)
+		if cleanup != nil {
+			results[item.Venue.Name()] = cleanup
 		}
-		hooks, ok := item.Cleanup.(RunCleanupAdapter)
-		if !ok {
-			continue
-		}
-		result := Result{
-			Venue:           item.Venue.Name(),
-			RunID:           cfg.RunID,
-			Scenario:        cfg.Scenario,
-			LatencyMode:     cfg.LatencyMode,
-			MeasurementMode: cfg.MeasurementMode,
-			Samples:         byVenue[item.Venue.Name()],
-		}
-		cleanup := hooks.AfterRun(ctx, result)
-		results[item.Venue.Name()] = &cleanup
 	}
 	return results
 }
@@ -257,9 +235,10 @@ func runPreparedCycleItem(ctx context.Context, preparedItem preparedCycleItem, c
 		}
 	}
 	lifecycle := sampleLifecycle{
-		client:  item.Client,
-		venue:   item.Venue,
-		cleanup: item.Cleanup,
+		client:          item.Client,
+		venue:           item.Venue,
+		cleanup:         item.Cleanup,
+		networkBaseline: item.NetworkBaseline,
 	}
 	sample := lifecycle.runPrepared(ctx, cfg, cycle.Index, cycle.Iteration, cycle.Warmup, cycle.ScheduledAt, preparedItem.prepared, preparedItem.preparedNS)
 	addExpectedFill(&sample, item, "entry", sample.Trace.StartedAt.Add(time.Duration(sample.Trace.WroteRequestAtNS)))
@@ -351,7 +330,7 @@ func attachCleanupMetadata(sample *Sample, metadata map[string]any) {
 	if len(metadata) == 0 {
 		return
 	}
-	sample.CloseoutOrderRefs = OrderRefsFromMetadata(metadata, MetadataCleanupOrdersKey)
+	sample.CloseoutOrderRefs = CleanupOrderRefContract("").FromMetadata(metadata)
 }
 
 func addExpectedFill(sample *Sample, item CoordinatedItem, phase string, at time.Time) {

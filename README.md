@@ -8,6 +8,11 @@ Benchmark crypto perps order submission latency.
 - `uv` for live Hyperliquid/Lighter/Extended runs; Python 3 for Aster
 - Venue accounts funded and configured before using `--confirm-live`
 
+Long-running services should prefer direct Python interpreters over resident
+`uv run` wrappers once dependencies are installed. Set `PERPS_BENCH_PYTHON` to
+a shared Python command prefix; matching `uv run ... python
+internal/venues/<venue>/...` commands will execute through that prefix.
+
 ## Quick Start
 
 Generate local wallet material:
@@ -69,8 +74,29 @@ The starter configs use small post-only orders. Keep them small until account
 setup is confirmed. Cleanup runs after each measured submit, outside the
 latency window.
 
+Post-only builder configs should derive price from the venue book instead of a
+fixed BTC level. Set `post_only_price_source` to `book_top` to enable the warm
+book-top stream, `post_only_price_offset_bps` for the maker-safe distance from
+best bid/ask, and `post_only_book_max_age_ms` for the stale-book guard. The live
+starter post-only configs use a 500 bps offset and fail request preparation if
+the book is missing or stale.
+
+Hyperliquid post-only configs can set `post_only_price_source` to
+`hyperliquid_l2book_http` to fetch `POST /info` `l2Book` pricing instead of
+opening another book WebSocket. Use `post_only_price_refresh_ms` to control the
+cache TTL; the starter Hyperliquid configs refresh every five minutes.
+
 For long-running taker sampling, use the venue-specific `*-taker-builder.json`
 config and strict cleanup.
+
+## Transport Policy
+
+Use persistent WebSocket order submission whenever a venue has a verified
+official order-entry WebSocket path. Hyperliquid and Lighter single, batch, and
+taker configs use WebSocket for this reason. Aster and Extended currently use
+HTTPS for order submission with WebSocket account-feed confirmation because the
+verified official WebSocket docs cover market/private streams, not order-entry
+submission.
 
 ## Account Commands
 
@@ -158,6 +184,16 @@ go run ./cmd/perps-bench serve \
   --listen 127.0.0.1:8080
 ```
 
+Print the collector/API service topology before wiring process supervision:
+
+```bash
+go run ./cmd/perps-bench service-topology \
+  --config examples/lighter-builder.json \
+  --env-file .env.wallets.local \
+  --store data/bench.db \
+  --listen 127.0.0.1:8080
+```
+
 Expose it publicly with a password:
 
 ```bash
@@ -209,10 +245,9 @@ Deploy the dashboard:
 
 ```bash
 cd frontend
-npm run build
 npx wrangler secret put PERPS_BENCH_API_URL --config wrangler.jsonc
 npx wrangler secret put PERPS_BENCH_API_PASSWORD --config wrangler.jsonc
-npm run deploy
+npm run deploy:staging
 ```
 
 The deployment flow uses `staging` as the local/default integration branch and
@@ -240,15 +275,25 @@ non-post-only orders, require `risk.allow_fill=true`,
 `risk.neutralize_on_fill=true`, and strict after-sample cleanup. Start with
 post-only/maker-style orders while validating setup.
 
-Hyperliquid, Lighter, Aster, and Extended support cleanup of benchmark orders.
-Cleanup runs outside the measured latency window. At startup, the runner checks
-for stale orders from the same `run_id`; after the run, it reconciles that no
-submitted benchmark orders remain open and the position did not change. Use
-strict cleanup when cleanup failures should fail the sample:
+Hyperliquid, Lighter, Aster, Extended, and Pacifica support cleanup of
+benchmark orders. Cleanup runs outside the measured latency window. At startup,
+venues with authenticated account reads check for stale orders from the same
+`run_id`; after the run, those venues reconcile that no submitted benchmark
+orders remain open and the position did not change. Pacifica currently prepares
+per-sample WebSocket cancel requests by client order ID. Use strict cleanup when
+cleanup failures should fail the sample:
 
 ```bash
 --cleanup --cleanup-mode strict
 ```
+
+Each live run also records a conservative network-floor estimate on every
+sample. The estimate prefers clean same-route observations in this order:
+WebSocket heartbeat RTT when the venue defines a safe heartbeat, real HTTP
+request TCP connect timing when a fresh connection is opened, then rolling
+low-percentile TCP connect timing to the same venue host and port as fallback.
+Raw latency remains the default dashboard view; use the dashboard's "Subtract
+network floor" toggle to inspect the optional network-adjusted view.
 
 ## Supported Venue Status
 
@@ -259,6 +304,8 @@ strict cleanup when cleanup failures should fail the sample:
 - Aster: HTTPS order/batch submission, private WebSocket confirmation, and cleanup.
 - Extended: HTTPS order submission, parallel single-order batch benchmark,
   private WebSocket confirmation, and cleanup.
+- Pacifica: WebSocket order submission, native WebSocket batch benchmark,
+  private WebSocket confirmation, and per-sample WebSocket cleanup.
 
 ## Troubleshooting
 

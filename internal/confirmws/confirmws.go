@@ -5,20 +5,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	coderws "github.com/coder/websocket"
+	gorillaws "github.com/gorilla/websocket"
 
 	"perps-latency-benchmark/internal/netlatency"
 )
 
 type Client struct {
-	conn      *websocket.Conn
+	conn      *gorillaws.Conn
+	coderConn *coderws.Conn
 	readLimit int64
+	writeMu   sync.Mutex
+	pingStop  chan struct{}
+	closeOnce sync.Once
+}
+
+type DialOptions struct {
+	EnableCompression          bool
+	CompressionContextTakeover bool
 }
 
 func Dial(ctx context.Context, url string, headers http.Header, readInitial bool) (*Client, error) {
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, headers)
+	return DialWithOptions(ctx, url, headers, readInitial, DialOptions{})
+}
+
+func DialWithOptions(ctx context.Context, url string, headers http.Header, readInitial bool, opts DialOptions) (*Client, error) {
+	if opts.CompressionContextTakeover {
+		return dialCoder(ctx, url, headers, readInitial, opts)
+	}
+	dialer := *gorillaws.DefaultDialer
+	dialer.EnableCompression = opts.EnableCompression
+	conn, _, err := dialer.DialContext(ctx, url, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -32,22 +52,107 @@ func Dial(ctx context.Context, url string, headers http.Header, readInitial bool
 	return client, nil
 }
 
+func dialCoder(ctx context.Context, url string, headers http.Header, readInitial bool, opts DialOptions) (*Client, error) {
+	dialOpts := &coderws.DialOptions{
+		HTTPHeader: headers.Clone(),
+	}
+	if opts.CompressionContextTakeover {
+		dialOpts.CompressionMode = coderws.CompressionContextTakeover
+	} else if opts.EnableCompression {
+		dialOpts.CompressionMode = coderws.CompressionNoContextTakeover
+	}
+	conn, _, err := coderws.Dial(ctx, url, dialOpts)
+	if err != nil {
+		return nil, err
+	}
+	conn.SetReadLimit(4 << 20)
+	client := &Client{coderConn: conn, readLimit: 4 << 20}
+	if readInitial {
+		if _, _, err := client.readRaw(ctx); err != nil {
+			_ = client.Close()
+			return nil, err
+		}
+	}
+	return client, nil
+}
+
 func (c *Client) Close() error {
-	if c == nil || c.conn == nil {
+	if c == nil || (c.conn == nil && c.coderConn == nil) {
 		return nil
 	}
-	err := c.conn.Close()
-	c.conn = nil
+	c.closeOnce.Do(func() {
+		if c.pingStop != nil {
+			close(c.pingStop)
+		}
+	})
+	var err error
+	if c.conn != nil {
+		err = c.conn.Close()
+		c.conn = nil
+	}
+	if c.coderConn != nil {
+		err = c.coderConn.Close(coderws.StatusNormalClosure, "")
+		c.coderConn = nil
+	}
 	return err
 }
 
 func (c *Client) WriteJSON(ctx context.Context, value any) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if c.coderConn != nil {
+		data, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		return c.coderConn.Write(ctx, coderws.MessageText, data)
+	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = c.conn.SetWriteDeadline(deadline)
 	} else {
 		_ = c.conn.SetWriteDeadline(time.Time{})
 	}
 	return c.conn.WriteJSON(value)
+}
+
+func (c *Client) StartPingFrames(interval time.Duration, timeout time.Duration) {
+	if c == nil || (c.conn == nil && c.coderConn == nil) || interval <= 0 {
+		return
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	if c.pingStop != nil {
+		return
+	}
+	stop := make(chan struct{})
+	c.pingStop = stop
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				deadline := time.Now().Add(timeout)
+				var err error
+				if c.coderConn != nil {
+					ctx, cancel := context.WithDeadline(context.Background(), deadline)
+					err = c.coderConn.Ping(ctx)
+					cancel()
+				} else {
+					c.writeMu.Lock()
+					err = c.conn.WriteControl(gorillaws.PingMessage, nil, deadline)
+					c.writeMu.Unlock()
+				}
+				if err != nil {
+					_ = c.Close()
+					return
+				}
+			case <-stop:
+				return
+			}
+		}
+	}()
 }
 
 func (c *Client) Wait(ctx context.Context, start time.Time, match func(map[string]any) (bool, error)) (netlatency.Result, error) {
@@ -81,6 +186,10 @@ func (c *Client) DrainUntil(ctx context.Context, match func(map[string]any) bool
 }
 
 func (c *Client) readRaw(ctx context.Context) ([]byte, time.Time, error) {
+	if c.coderConn != nil {
+		_, data, err := c.coderConn.Read(ctx)
+		return data, time.Now(), err
+	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = c.conn.SetReadDeadline(deadline)
 	} else {

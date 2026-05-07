@@ -3,9 +3,9 @@ package edgex
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/confirmws"
 	"perps-latency-benchmark/internal/netlatency"
@@ -14,36 +14,27 @@ import (
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["confirmation"].(map[string]any)
-	if !ok || confirmutil.Text(raw["venue"]) != "edgex" {
-		return nil, nil
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "confirmation",
+		Venue:    "edgex",
+		IDField:  "client_order_ids",
+		Required: []string{"ws_url"},
+	})
+	if !ok || err != nil {
+		return nil, err
 	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	if wsURL == "" {
-		return nil, fmt.Errorf("edgex confirmation metadata missing ws_url")
-	}
-	clientIDs := confirmutil.IDSet(raw["client_order_ids"])
-	if len(clientIDs) == 0 {
-		return nil, fmt.Errorf("edgex confirmation metadata missing client_order_ids")
-	}
-	headers := http.Header{}
-	if rawHeaders, ok := raw["headers"].(map[string]any); ok {
-		for key, value := range rawHeaders {
-			headers.Set(key, confirmutil.Text(value))
-		}
-	}
+	headers := plan.Headers("headers")
 	if headers.Get("X-edgeX-Api-Timestamp") == "" || headers.Get("X-edgeX-Api-Signature") == "" {
 		return nil, fmt.Errorf("edgex confirmation metadata missing websocket auth headers")
 	}
-	client, err := confirmws.Dial(ctx, wsURL, headers, false)
+	client, err := confirmws.Dial(ctx, plan.WSURL, headers, false)
 	if err != nil {
 		return nil, err
 	}
-	orderType := confirmutil.Text(raw["order_type"])
 	return &bench.Confirmation{
 		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
 			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchEdgeXConfirmation(msg, clientIDs, orderType)
+				return matchEdgeXConfirmation(msg, plan.IDs, plan.Order)
 			})
 		},
 		Close: client.Close,

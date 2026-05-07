@@ -32,6 +32,8 @@ func TestNamesIncludesInitialVenueSet(t *testing.T) {
 		"grvt",
 		"hyperliquid",
 		"lighter",
+		"nado",
+		"pacifica",
 		"variational_omni",
 	} {
 		if !slices.Contains(names, name) {

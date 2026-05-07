@@ -1,6 +1,7 @@
 import { WINDOW_OPTIONS, type WindowOption } from "@/api/bench"
 
 export interface DashboardFilters {
+  subtractNetworkFloor: boolean
   venues: "all" | Array<string>
   window: WindowOption
 }

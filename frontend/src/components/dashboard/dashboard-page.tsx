@@ -31,8 +31,12 @@ import {
   formatLatency,
   formatTime,
 } from "@/lib/format"
-import { cancelSampleMs, confirmP50, confirmP95 } from "@/lib/latency-metric"
-import { buildSummaryRows } from "@/lib/sample-summary"
+import {
+  cancelSampleMs,
+  confirmP50,
+  confirmP95,
+  confirmSampleMs,
+} from "@/lib/latency-metric"
 
 const HIDDEN_FRONTEND_VENUES = new Set(["edgex"])
 const GITHUB_URL = "https://github.com/Check-the-Chain/perps-latency-benchmark"
@@ -40,6 +44,7 @@ type CancelChartScenario = "single" | "batch"
 
 export function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
+    subtractNetworkFloor: false,
     venues: "all",
     window: DEFAULT_WINDOW,
   })
@@ -56,8 +61,9 @@ export function DashboardPage() {
     [measurements]
   )
   const visibleSummaries = useMemo(
-    () => buildSummaryRows(visibleMeasurements),
-    [visibleMeasurements]
+    () =>
+      (latest.data?.summaries ?? []).filter((row) => isVisibleVenue(row.venue)),
+    [latest.data?.summaries]
   )
   const postOnlySourceSamples = useMemo(
     () =>
@@ -97,6 +103,16 @@ export function DashboardPage() {
   )
   const cancelSamples =
     cancelChartScenario === "batch" ? batchPostOnlySamples : postOnlySamples
+  const confirmationValueForSample = useMemo(
+    () => (sample: Sample) =>
+      confirmSampleMs(sample, filters.subtractNetworkFloor),
+    [filters.subtractNetworkFloor]
+  )
+  const cancelValueForSample = useMemo(
+    () => (sample: Sample) =>
+      cancelSampleMs(sample, filters.subtractNetworkFloor),
+    [filters.subtractNetworkFloor]
+  )
   const postOnlyVenues = useMemo(
     () => venuesForSamples(postOnlySourceSamples),
     [postOnlySourceSamples]
@@ -111,7 +127,10 @@ export function DashboardPage() {
   )
   const cancelVenues =
     cancelChartScenario === "batch" ? batchPostOnlyVenues : postOnlyVenues
-  const stats = useMemo(() => getStats(filteredSummaries), [filteredSummaries])
+  const stats = useMemo(
+    () => getStats(filteredSummaries, filters.subtractNetworkFloor),
+    [filteredSummaries, filters.subtractNetworkFloor]
+  )
 
   return (
     <div className="space-y-3">
@@ -151,6 +170,8 @@ export function DashboardPage() {
             >
               <svg
                 className="size-3.5"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="currentColor"
                 aria-hidden
@@ -177,19 +198,22 @@ export function DashboardPage() {
       <section className="grid gap-3 md:grid-cols-2">
         <MetricCard
           label="Best post-only p50"
-          value={formatLatency(stats.fastestPostOnlyP50 ? confirmP50(stats.fastestPostOnlyP50) : undefined)}
-          detail={formatWinnerDetail(stats.fastestPostOnlyP50)}
+          value={formatLatency(stats.fastestPostOnlyP50 ? confirmP50(stats.fastestPostOnlyP50, filters.subtractNetworkFloor) : undefined)}
+          detail={formatWinnerDetail(stats.fastestPostOnlyP50, filters.subtractNetworkFloor)}
           tone="good"
         />
         <MetricCard
           label="Best taker p50"
-          value={formatLatency(stats.fastestTakerP50 ? confirmP50(stats.fastestTakerP50) : undefined)}
-          detail={formatWinnerDetail(stats.fastestTakerP50)}
+          value={formatLatency(stats.fastestTakerP50 ? confirmP50(stats.fastestTakerP50, filters.subtractNetworkFloor) : undefined)}
+          detail={formatWinnerDetail(stats.fastestTakerP50, filters.subtractNetworkFloor)}
           tone="good"
         />
       </section>
 
-      <LatencyTable rows={filteredSummaries} />
+      <LatencyTable
+        rows={filteredSummaries}
+        subtractNetworkFloor={filters.subtractNetworkFloor}
+      />
       <InfrastructurePanel />
       <LatencyTimeseriesChart
         title="Post-only Confirmation"
@@ -198,6 +222,7 @@ export function DashboardPage() {
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, postOnlyVenues)}
         venues={postOnlyVenues}
+        valueForSample={confirmationValueForSample}
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -205,11 +230,12 @@ export function DashboardPage() {
       />
       <LatencyTimeseriesChart
         title="Batch Post-only Confirmation"
-        description="Five post-only orders per sample. Hyperliquid, Lighter, and Aster use native batch submits; Extended sends five single-order requests concurrently because no native batch endpoint is documented."
+        description="Five post-only orders per sample. Native batch venues are labeled separately from manual fanout venues that send concurrent single-order requests."
         samples={batchPostOnlySamples}
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, batchPostOnlyVenues)}
         venues={batchPostOnlyVenues}
+        valueForSample={confirmationValueForSample}
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -233,7 +259,7 @@ export function DashboardPage() {
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, cancelVenues)}
         venues={cancelVenues}
-        valueForSample={cancelSampleMs}
+        valueForSample={cancelValueForSample}
         valueLabel="Cancel confirmation"
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
@@ -247,6 +273,7 @@ export function DashboardPage() {
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, takerVenues)}
         venues={takerVenues}
+        valueForSample={confirmationValueForSample}
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -266,21 +293,16 @@ function filterSamples(samples: Array<Sample>, filters: DashboardFilters) {
   return samples.filter((sample) => matchesVenue(filters.venues, sample.venue))
 }
 
-function getStats(rows: Array<SummaryRow>) {
+function getStats(rows: Array<SummaryRow>, subtractNetworkFloor: boolean) {
   const measurementCount = rows.reduce((sum, row) => sum + row.count, 0)
-  const ok = rows.reduce((sum, row) => sum + row.ok, 0)
-  const failed = rows.reduce((sum, row) => sum + row.failed, 0)
   const rankedRows = rows.filter(isRankableSummaryRow)
   const postOnlyRows = rankedRows.filter((row) => isPostOnlyOrder(row.order_type))
   const takerRows = rankedRows.filter((row) => isTakerOrder(row.order_type))
 
   return {
-    failed,
-    failureRate: measurementCount > 0 ? failed / measurementCount : 0,
-    fastestPostOnlyP50: minBy(postOnlyRows, (row) => confirmP50(row) ?? Number.NaN),
-    fastestTakerP50: minBy(takerRows, (row) => confirmP50(row) ?? Number.NaN),
+    fastestPostOnlyP50: minBy(postOnlyRows, (row) => confirmP50(row, subtractNetworkFloor) ?? Number.NaN),
+    fastestTakerP50: minBy(takerRows, (row) => confirmP50(row, subtractNetworkFloor) ?? Number.NaN),
     measurementCount,
-    ok,
   }
 }
 
@@ -327,12 +349,12 @@ function isVisibleVenue(venue: string) {
   return !HIDDEN_FRONTEND_VENUES.has(venue.toLowerCase())
 }
 
-function formatWinnerDetail(row: SummaryRow | null) {
+function formatWinnerDetail(row: SummaryRow | null, subtractNetworkFloor = false) {
   if (!row) {
     return "no matching data"
   }
 
-  return `${formatVenue(row.venue)} / p95 ${formatLatency(confirmP95(row))} / ${formatCount(row.ok)} samples`
+  return `${formatVenue(row.venue)} / p95 ${formatLatency(confirmP95(row, subtractNetworkFloor))} / ${formatCount(row.ok)} samples`
 }
 
 function isRankableSummaryRow(row: SummaryRow) {

@@ -11,12 +11,21 @@ import {
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react"
 import { useMemo, useState } from "react"
 
-export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
+export function LatencyTable({
+  rows,
+  subtractNetworkFloor,
+}: {
+  rows: Array<SummaryRow>
+  subtractNetworkFloor: boolean
+}) {
   const [sort, setSort] = useState<SortState>({
     direction: "asc",
     key: "p50",
   })
-  const sortedRows = useMemo(() => sortRows(rows, sort), [rows, sort])
+  const sortedRows = useMemo(
+    () => sortRows(rows, sort, subtractNetworkFloor),
+    [rows, sort, subtractNetworkFloor]
+  )
 
   return (
     <section className="overflow-hidden rounded-sm border border-border/80 bg-surface-1">
@@ -40,7 +49,7 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
                 direction={sort.direction}
                 onClick={() => setSort((current) => nextSort(current, "p50"))}
               >
-                Displayed p50
+                p50
               </SortableHeaderCell>
               <SortableHeaderCell
                 active={sort.key === "p95"}
@@ -48,7 +57,7 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
                 direction={sort.direction}
                 onClick={() => setSort((current) => nextSort(current, "p95"))}
               >
-                Displayed p95
+                p95
               </SortableHeaderCell>
               <HeaderCell align="right">Cancel p50</HeaderCell>
               <HeaderCell align="right">Cancel p95</HeaderCell>
@@ -67,7 +76,7 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
             ) : (
               sortedRows.map((row) => (
                 <tr
-                  key={`${row.venue}:${row.scenario}:${row.order_type}:${row.batch_size}:${row.measurement_mode ?? "ack"}`}
+                  key={`${row.venue}:${row.scenario}:${row.order_type}:${row.batch_size}:${row.batch_submission ?? ""}:${row.measurement_mode ?? "ack"}`}
                   className="border-t border-border/70"
                 >
                   <BodyCell className="font-medium">{row.venue}</BodyCell>
@@ -77,10 +86,10 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
                   <BodyCell>{primaryLabel(row.venue)}</BodyCell>
                   <BodyCell align="right">{formatCount(row.count)}</BodyCell>
                   <BodyCell align="right">{formatCount(row.ok)}</BodyCell>
-                  <BodyCell align="right">{formatLatency(confirmP50(row))}</BodyCell>
-                  <BodyCell align="right">{formatLatency(confirmP95(row))}</BodyCell>
-                  <BodyCell align="right">{formatLatency(cancelP50(row))}</BodyCell>
-                  <BodyCell align="right">{formatLatency(cancelP95(row))}</BodyCell>
+                  <BodyCell align="right">{formatLatency(confirmP50(row, subtractNetworkFloor))}</BodyCell>
+                  <BodyCell align="right">{formatLatency(confirmP95(row, subtractNetworkFloor))}</BodyCell>
+                  <BodyCell align="right">{formatLatency(cancelP50(row, subtractNetworkFloor))}</BodyCell>
+                  <BodyCell align="right">{formatLatency(cancelP95(row, subtractNetworkFloor))}</BodyCell>
                   <BodyCell align="right">{formatUSD(row.cost_mean_usd)}</BodyCell>
                   <BodyCell align="right">{formatLatency(summarySpeedBumpMS(row))}</BodyCell>
                   <BodyCell align="right">
@@ -115,12 +124,16 @@ function nextSort(current: SortState, key: SortKey): SortState {
   }
 }
 
-function sortRows(rows: Array<SummaryRow>, sort: SortState) {
+function sortRows(
+  rows: Array<SummaryRow>,
+  sort: SortState,
+  subtractNetworkFloor: boolean
+) {
   const direction = sort.direction === "asc" ? 1 : -1
   return [...rows].sort((left, right) => {
     const latencyCompare = compareLatencyValues(
-      sortValue(left, sort.key),
-      sortValue(right, sort.key),
+      sortValue(left, sort.key, subtractNetworkFloor),
+      sortValue(right, sort.key, subtractNetworkFloor),
       direction
     )
 
@@ -132,8 +145,14 @@ function sortRows(rows: Array<SummaryRow>, sort: SortState) {
   })
 }
 
-function sortValue(row: SummaryRow, key: SortKey) {
-  return key === "p50" ? confirmP50(row) : confirmP95(row)
+function sortValue(
+  row: SummaryRow,
+  key: SortKey,
+  subtractNetworkFloor: boolean
+) {
+  return key === "p50"
+    ? confirmP50(row, subtractNetworkFloor)
+    : confirmP95(row, subtractNetworkFloor)
 }
 
 function compareLatencyValues(
@@ -158,8 +177,8 @@ function compareLatencyValues(
 }
 
 function compareRowIdentity(left: SummaryRow, right: SummaryRow) {
-  return `${left.venue}:${left.scenario}:${left.order_type}:${left.batch_size}`.localeCompare(
-    `${right.venue}:${right.scenario}:${right.order_type}:${right.batch_size}`
+  return `${left.venue}:${left.scenario}:${left.order_type}:${left.batch_size}:${left.batch_submission ?? ""}`.localeCompare(
+    `${right.venue}:${right.scenario}:${right.order_type}:${right.batch_size}:${right.batch_submission ?? ""}`
   )
 }
 
@@ -168,8 +187,8 @@ function submissionLabel(row: SummaryRow) {
     return "Single order"
   }
   const count = row.batch_size || 1
-  if (row.venue.toLowerCase() === "extended") {
-    return `${count} parallel orders`
+  if (row.batch_submission === "manual") {
+    return `${count} manual fanout`
   }
   return `${count} native batch`
 }

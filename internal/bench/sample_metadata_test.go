@@ -33,6 +33,31 @@ func TestOrderRefsFromMetadataNormalizesVenueRefs(t *testing.T) {
 	}
 }
 
+func TestOrderRefContractPrefersTypedSampleRefs(t *testing.T) {
+	contract := CleanupOrderRefContract("")
+	sample := Sample{
+		OrderRefs: []OrderRef{{Venue: "typed", ClientOrderID: "typed-1"}},
+		Metadata: map[string]any{
+			"cleanup_orders": []any{map[string]any{"venue": "metadata", "client_order_id": "metadata-1"}},
+		},
+	}
+
+	refs := contract.FromSample(sample)
+	if len(refs) != 1 || refs[0].Venue != "typed" || refs[0].ClientOrderID != "typed-1" {
+		t.Fatalf("refs = %#v", refs)
+	}
+}
+
+func TestOrderRefContractWritesConfiguredMetadataField(t *testing.T) {
+	contract := CleanupOrderRefContract("custom_refs")
+	metadata := contract.PutMetadata(nil, []OrderRef{{Venue: "venue-a", ClientOrderID: "order-1"}})
+
+	refs := OrderRefsFromMetadata(metadata, "custom_refs")
+	if len(refs) != 1 || refs[0].ClientOrderID != "order-1" {
+		t.Fatalf("metadata = %#v refs = %#v", metadata, refs)
+	}
+}
+
 func TestDebugMetadataStripsRequiredBenchmarkSemantics(t *testing.T) {
 	metadata := map[string]any{
 		"builder":             "test",

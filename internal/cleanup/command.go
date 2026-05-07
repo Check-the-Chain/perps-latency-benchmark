@@ -104,10 +104,8 @@ func (a *CommandAdapter) AfterSample(ctx context.Context, sample bench.Sample) b
 
 func (a *CommandAdapter) PrepareAfterSample(ctx context.Context, sample bench.Sample) (bench.PreparedCleanup, error) {
 	start := time.Now()
-	orderRefs := sample.OrderRefs
-	if len(orderRefs) == 0 {
-		orderRefs = bench.OrderRefsFromMetadata(sample.Metadata, cmp.Or(a.cfg.OrderRefsField, "cleanup_orders"))
-	}
+	refContract := bench.CleanupOrderRefContract(a.cfg.OrderRefsField)
+	orderRefs := refContract.FromSample(sample)
 	if a.cfg.SkipNoRefs && len(orderRefs) == 0 {
 		return bench.PreparedCleanup{
 			Result:     &bench.CleanupResult{Attempted: false, OK: true, Description: "no cleanup order refs"},
@@ -119,7 +117,7 @@ func (a *CommandAdapter) PrepareAfterSample(ctx context.Context, sample bench.Sa
 		if metadata == nil {
 			metadata = map[string]any{}
 		}
-		metadata[cmp.Or(a.cfg.OrderRefsField, "cleanup_orders")] = bench.OrderRefsToMetadata(orderRefs)
+		metadata = refContract.PutMetadata(metadata, orderRefs)
 	}
 
 	params := map[string]any{
@@ -217,8 +215,14 @@ func (a *CommandAdapter) prepare(ctx context.Context, start time.Time, req paylo
 		}, PreparedNS: preparedNS}, nil
 	}
 	var routeErrors []string
+	attempt := cleanupAttempt{
+		adapter:    a,
+		start:      start,
+		preparedNS: preparedNS,
+		built:      built,
+	}
 	for _, route := range routes {
-		prepared, ok, fallback, err := a.prepareCleanupRoute(ctx, start, preparedNS, route, built, routeErrors)
+		prepared, ok, fallback, err := attempt.prepareRoute(ctx, route, routeErrors)
 		if err != nil {
 			return bench.PreparedCleanup{}, err
 		}
@@ -230,50 +234,6 @@ func (a *CommandAdapter) prepare(ctx context.Context, start time.Time, req paylo
 		}
 	}
 	return bench.PreparedCleanup{}, fmt.Errorf("no cleanup route could be prepared: %s", strings.Join(routeErrors, "; "))
-}
-
-func (a *CommandAdapter) prepareCleanupRoute(ctx context.Context, start time.Time, preparedNS int64, route cleanupRoute, built payload.Built, routeErrors []string) (bench.PreparedCleanup, bool, string, error) {
-	switch route.kind {
-	case cleanupRouteWebSocket:
-		headers := payload.MergeHeaders(a.headers, built.Headers)
-		client, err := a.webSocketClient(route.wsURL, headers)
-		if err != nil {
-			return bench.PreparedCleanup{}, false, "", err
-		}
-		if err := client.EnsureConnected(ctx); err != nil {
-			return bench.PreparedCleanup{}, false, "websocket prepare failed: " + err.Error(), nil
-		}
-		confirmation, err := a.prepareCancelConfirmation(ctx, built)
-		if err != nil {
-			return bench.PreparedCleanup{}, false, "", err
-		}
-		preparedNS = time.Since(start).Nanoseconds()
-		return bench.PreparedCleanup{
-			PreparedNS: preparedNS,
-			Execute: func(execCtx context.Context) bench.CleanupResult {
-				result, err := client.Do(execCtx, route.wsBody)
-				cleanup := a.execution().resultFromNetworkWithConfirmation(execCtx, result, err, preparedNS, built, confirmation, a.cfg.Timeout)
-				annotateCleanupRoute(&cleanup, string(cleanupRouteWebSocket), routeErrors)
-				return cleanup
-			},
-		}, true, "", nil
-	case cleanupRouteHTTP:
-		confirmation, err := a.prepareCancelConfirmation(ctx, built)
-		if err != nil {
-			return bench.PreparedCleanup{}, false, "", err
-		}
-		return bench.PreparedCleanup{
-			PreparedNS: preparedNS,
-			Execute: func(execCtx context.Context) bench.CleanupResult {
-				result, err := a.cfg.Client.Do(execCtx, route.http)
-				cleanup := a.execution().resultFromNetworkWithConfirmation(execCtx, result, err, preparedNS, built, confirmation, a.cfg.Timeout)
-				annotateCleanupRoute(&cleanup, string(cleanupRouteHTTP), routeErrors)
-				return cleanup
-			},
-		}, true, "", nil
-	default:
-		return bench.PreparedCleanup{}, false, "", fmt.Errorf("unknown cleanup route kind %q", route.kind)
-	}
 }
 
 func (a *CommandAdapter) prepareCancelConfirmation(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {

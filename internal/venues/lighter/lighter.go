@@ -22,6 +22,9 @@ const DefaultWSURL = "wss://mainnet.zklighter.elliot.ai/stream"
 const WebSocketSendTxType = "jsonapi/sendtx"
 const WebSocketSendTxBatchType = "jsonapi/sendtxbatch"
 
+const WebSocketHeartbeatIdleAfter = 60 * time.Second
+const WebSocketHeartbeatTimeout = 5 * time.Second
+
 func Definition() spec.Definition {
 	return spec.Definition{
 		Name:             "lighter",
@@ -31,6 +34,11 @@ func Definition() spec.Definition {
 		DefaultBatchPath: DefaultBatchPath,
 		DefaultWSURL:     DefaultWSURL,
 		WSReadInitial:    true,
+		WSHeartbeat: spec.WebSocketHeartbeat{
+			ControlFrame: "ping",
+			IdleAfter:    WebSocketHeartbeatIdleAfter,
+			Timeout:      WebSocketHeartbeatTimeout,
+		},
 		Capabilities: spec.Capabilities{
 			HTTPSingle:      true,
 			HTTPBatch:       true,

@@ -93,6 +93,14 @@ func TestWebSocketClientHeartbeatRunsBeforeIdleRequest(t *testing.T) {
 		Message:   []byte(`{"method":"ping"}`),
 		IdleAfter: 50 * time.Millisecond,
 		Timeout:   time.Second,
+		ObserveRTT: func(valueNS int64, source string) {
+			if valueNS <= 0 {
+				t.Errorf("heartbeat RTT = %d", valueNS)
+			}
+			if source != "ws_heartbeat" {
+				t.Errorf("heartbeat source = %q", source)
+			}
+		},
 	})
 	defer client.Close()
 
@@ -118,5 +126,55 @@ func TestWebSocketClientHeartbeatRunsBeforeIdleRequest(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatalf("timed out waiting for %s", expected)
 		}
+	}
+}
+
+func TestWebSocketClientControlPingHeartbeatRunsBeforeIdleRequest(t *testing.T) {
+	pings := make(chan struct{}, 1)
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade: %v", err)
+			return
+		}
+		defer conn.Close()
+		conn.SetPingHandler(func(message string) error {
+			pings <- struct{}{}
+			return conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(time.Second))
+		})
+
+		for {
+			msgType, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if err := conn.WriteMessage(msgType, data); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := NewWebSocketClientWithHeartbeat(wsURL, nil, false, WebSocketHeartbeat{
+		ControlFrame: "ping",
+		IdleAfter:    50 * time.Millisecond,
+		Timeout:      time.Second,
+	})
+	defer client.Close()
+
+	if _, err := client.Do(context.Background(), []byte(`{"order":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(75 * time.Millisecond)
+	if _, err := client.Do(context.Background(), []byte(`{"order":2}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-pings:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for control ping")
 	}
 }

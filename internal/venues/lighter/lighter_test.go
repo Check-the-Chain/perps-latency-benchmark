@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/lifecycle"
@@ -34,6 +35,15 @@ func TestDefinitionMatchesOfficialLighterEndpoints(t *testing.T) {
 	}
 	if definition.DefaultWSURL != "wss://mainnet.zklighter.elliot.ai/stream" {
 		t.Fatalf("DefaultWSURL = %q", definition.DefaultWSURL)
+	}
+	if definition.WSHeartbeat.ControlFrame != "ping" {
+		t.Fatalf("WSHeartbeat.ControlFrame = %q", definition.WSHeartbeat.ControlFrame)
+	}
+	if definition.WSHeartbeat.IdleAfter != WebSocketHeartbeatIdleAfter {
+		t.Fatalf("WSHeartbeat.IdleAfter = %s", definition.WSHeartbeat.IdleAfter)
+	}
+	if definition.WSHeartbeat.IdleAfter >= 2*time.Minute {
+		t.Fatalf("WSHeartbeat.IdleAfter = %s, want below Lighter 2-minute keepalive window", definition.WSHeartbeat.IdleAfter)
 	}
 	for _, doc := range []string{
 		"https://apidocs.lighter.xyz/reference/sendtx",

@@ -26,11 +26,8 @@ interface Series {
   color: string
   key: string
   label: string
-  measurementMode: string
   points: Array<Point>
-  scenario: string
   strokeDasharray?: string
-  transport: string
   venue: string
 }
 
@@ -687,16 +684,6 @@ function buildSeries(
   valueForSample: (sample: Sample) => number | undefined
 ): Array<Series> {
   const grouped = new Map<string, Array<Point>>()
-  const metadata = new Map<
-    string,
-    {
-      measurementMode: string
-      orderType: string
-      scenario: string
-      transport: string
-      venue: string
-    }
-  >()
 
   for (const sample of samples) {
     if (!sample.ok || sample.warmup || sample.network_ns <= 0) {
@@ -713,9 +700,8 @@ function buildSeries(
       continue
     }
 
-    const orderType = sample.order_type || "unknown"
-    const measurementMode = sample.measurement_mode || "ack"
-    const key = sample.venue
+    const batchKind = batchSubmission(sample)
+    const key = batchKind ? `${sample.venue}:${batchKind}` : sample.venue
     const points = grouped.get(key) ?? []
     points.push({
       date,
@@ -723,50 +709,50 @@ function buildSeries(
       ms,
     })
     grouped.set(key, points)
-    const current = metadata.get(key)
-    metadata.set(key, {
-      measurementMode: current?.measurementMode === measurementMode
-        ? current.measurementMode
-        : current
-          ? "mixed"
-          : measurementMode,
-      orderType: current?.orderType === orderType
-        ? current.orderType
-        : current
-          ? "mixed"
-          : orderType,
-      scenario: current?.scenario === sample.scenario
-        ? current.scenario
-        : current
-          ? "mixed"
-          : sample.scenario,
-      transport: current?.transport === sample.transport
-        ? current.transport
-        : current
-          ? "mixed"
-          : sample.transport,
-      venue: sample.venue,
-    })
   }
 
   return [...grouped.entries()]
     .map(([key, points]) => {
-      const meta = metadata.get(key)
-      const venue = meta?.venue ?? key.split(":")[0] ?? "unknown"
+      const [venue = "unknown", batchKind = ""] = key.split(":")
 
       return {
         color: colorForVenue(venue),
         key,
-        label: formatSeriesLabel(meta, key),
-        measurementMode: meta?.measurementMode ?? "ack",
+        label: seriesLabel(venue, batchKind),
         points: points.sort((a, b) => a.date.getTime() - b.date.getTime()),
-        scenario: meta?.scenario ?? "unknown",
-        transport: meta?.transport ?? "unknown",
+        strokeDasharray: batchKind === "manual" ? "5 4" : undefined,
         venue,
       }
     })
     .filter((item) => item.points.length > 0)
     .sort((left, right) => left.label.localeCompare(right.label))
+}
+
+function batchSubmission(sample: Sample) {
+  if (sample.scenario !== "batch") {
+    return ""
+  }
+  if (sample.metadata?.native_batch_endpoint === false) {
+    return "manual"
+  }
+  if (sample.metadata?.native_batch_endpoint === true) {
+    return "native"
+  }
+  if (typeof sample.metadata?.submission_model === "string") {
+    return "manual"
+  }
+  return "native"
+}
+
+function seriesLabel(venue: string, batchKind: string) {
+  const label = formatVenue(venue)
+  if (batchKind === "manual") {
+    return `${label} (manual)`
+  }
+  if (batchKind === "native") {
+    return `${label} (native)`
+  }
+  return label
 }
 
 function buildDisplaySeries(
@@ -928,25 +914,6 @@ function stableLogTicks(
   return selected.sort((left, right) => left - right)
 }
 
-function formatSeriesLabel(
-  meta:
-    | {
-        measurementMode: string
-        orderType: string
-        scenario: string
-        transport: string
-        venue: string
-      }
-    | undefined,
-  fallback: string
-) {
-  if (!meta) {
-    return fallback.split(":")[0] ?? fallback
-  }
-
-  return formatVenue(meta.venue)
-}
-
 function formatVenue(value: string) {
   return value
     .split(/[_-]/)
@@ -975,5 +942,6 @@ const KNOWN_VENUE_COLORS: Record<string, string> = {
   hyperliquid: "oklch(0.54 0.17 150)",
   lighter: "oklch(0.55 0.17 245)",
   lighter_free: "oklch(0.66 0.16 220)",
+  nado: "oklch(0.55 0.18 305)",
   variational_omni: "oklch(0.62 0.15 75)",
 }

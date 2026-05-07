@@ -13,8 +13,8 @@
   },
   "http": {
     "timeout_ms": 10000,
-    "max_idle_conns": 256,
-    "max_idle_conns_per_host": 256,
+    "max_idle_conns": 16,
+    "max_idle_conns_per_host": 8,
     "disable_compression": true
   },
   "risk": {
@@ -55,6 +55,9 @@
         "side": "buy",
         "size": "0.001",
         "price": "75000",
+        "post_only_price_source": "hyperliquid_l2book_http",
+        "post_only_price_offset_bps": 500,
+        "post_only_price_refresh_ms": 300000,
         "price_step": "10",
         "tif": "Alo"
       }

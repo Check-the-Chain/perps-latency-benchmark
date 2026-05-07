@@ -30,6 +30,36 @@ func TestSummarizeUsesAdjustedNetworkLatency(t *testing.T) {
 	}
 }
 
+func TestLatencyForSampleCentralizesAdjustments(t *testing.T) {
+	sample := Sample{
+		Venue:          "extended",
+		OrderType:      "market",
+		NetworkNS:      300_000_000,
+		RawNetworkNS:   300_000_000,
+		NetworkFloorNS: 20_000_000,
+		Cleanup: &CleanupResult{
+			Attempted:   true,
+			OK:          true,
+			DurationNS:  90_000_000,
+			Description: "cancel_order",
+			Metadata: map[string]any{
+				CleanupConfirmationMetadataKey: CleanupConfirmationAccountFeed,
+			},
+		},
+	}
+
+	latency := LatencyForSample(sample)
+	if latency.SpeedBumpNS != ExtendedSpeedBumpNS || latency.ConfirmationNS != 150_000_000 {
+		t.Fatalf("confirmation latency = %#v", latency)
+	}
+	if latency.NetworkAdjustedNS != 130_000_000 {
+		t.Fatalf("network adjusted latency = %#v", latency)
+	}
+	if !latency.HasCancel || latency.CancelNS != 90_000_000 || latency.NetworkAdjustedCleanupNS != 70_000_000 {
+		t.Fatalf("cancel latency = %#v", latency)
+	}
+}
+
 func TestSummarizeAppliesExtendedSpeedBumpFallback(t *testing.T) {
 	summary := Summarize([]Sample{
 		{
@@ -79,19 +109,43 @@ func TestSummarizeDoesNotApplyExtendedSpeedBumpToPostOnly(t *testing.T) {
 	}
 }
 
+func TestSummarizeNetworkAdjustedLatency(t *testing.T) {
+	summary := Summarize([]Sample{
+		{
+			NetworkNS:      100_000_000,
+			NetworkFloorNS: 2_000_000,
+			OK:             true,
+			Classification: lifecycle.Classification{Status: lifecycle.StatusAccepted},
+		},
+		{
+			NetworkNS:      140_000_000,
+			NetworkFloorNS: 4_000_000,
+			OK:             true,
+			Classification: lifecycle.Classification{Status: lifecycle.StatusAccepted},
+		},
+	})
+
+	if summary.NetworkFloorP50MS < 1.9 || summary.NetworkFloorP50MS > 2.1 {
+		t.Fatalf("network floor p50 = %f", summary.NetworkFloorP50MS)
+	}
+	if summary.NetworkAdjustedP50MS < 97.9 || summary.NetworkAdjustedP50MS > 98.1 {
+		t.Fatalf("network adjusted p50 = %f", summary.NetworkAdjustedP50MS)
+	}
+}
+
 func TestSummarizeCleanupLatency(t *testing.T) {
 	summary := Summarize([]Sample{
 		{
 			NetworkNS:      100_000_000,
 			OK:             true,
 			Classification: lifecycle.Classification{Status: lifecycle.StatusAccepted},
-			Cleanup:        &CleanupResult{Attempted: true, OK: true, DurationNS: 2_000_000, Description: "cancel_order"},
+			Cleanup:        accountFeedCancel(2_000_000),
 		},
 		{
 			NetworkNS:      120_000_000,
 			OK:             true,
 			Classification: lifecycle.Classification{Status: lifecycle.StatusAccepted},
-			Cleanup:        &CleanupResult{Attempted: true, OK: true, DurationNS: 4_000_000, Description: "cancel_order"},
+			Cleanup:        accountFeedCancel(4_000_000),
 		},
 		{
 			NetworkNS:      140_000_000,
@@ -126,5 +180,31 @@ func TestCancelLatencyNSExcludesNeutralizeCleanup(t *testing.T) {
 	})
 	if ok {
 		t.Fatal("neutralize cleanup counted as cancel latency")
+	}
+}
+
+func TestCancelLatencyNSRequiresAccountFeedConfirmation(t *testing.T) {
+	_, ok := CancelLatencyNS(Sample{
+		Cleanup: &CleanupResult{
+			Attempted:   true,
+			OK:          true,
+			DurationNS:  3_000_000,
+			Description: "cancel_order",
+		},
+	})
+	if ok {
+		t.Fatal("cancel ack counted as account-feed cancel latency")
+	}
+}
+
+func accountFeedCancel(durationNS int64) *CleanupResult {
+	return &CleanupResult{
+		Attempted:   true,
+		OK:          true,
+		DurationNS:  durationNS,
+		Description: "cancel_order",
+		Metadata: map[string]any{
+			CleanupConfirmationMetadataKey: CleanupConfirmationAccountFeed,
+		},
 	}
 }

@@ -18,6 +18,7 @@ export interface SummaryRow {
   order_type: string
   measurement_mode?: string
   batch_size: number
+  batch_submission?: string
   count: number
   ok: number
   failed: number
@@ -29,6 +30,14 @@ export interface SummaryRow {
   raw_p50_ms?: number
   raw_p95_ms?: number
   raw_p99_ms?: number
+  network_floor_mean_ms?: number
+  network_floor_p50_ms?: number
+  network_floor_p95_ms?: number
+  network_floor_p99_ms?: number
+  network_adjusted_mean_ms?: number
+  network_adjusted_p50_ms?: number
+  network_adjusted_p95_ms?: number
+  network_adjusted_p99_ms?: number
   speed_bump_ms?: number
   speed_bump_source?: string
   submission_p50_ms?: number
@@ -38,6 +47,10 @@ export interface SummaryRow {
   cleanup_p50_ms?: number
   cleanup_p95_ms?: number
   cleanup_p99_ms?: number
+  network_adjusted_cleanup_mean_ms?: number
+  network_adjusted_cleanup_p50_ms?: number
+  network_adjusted_cleanup_p95_ms?: number
+  network_adjusted_cleanup_p99_ms?: number
   cleanup_ok: number
   cleanup_failed: number
   cost_count?: number
@@ -138,6 +151,8 @@ export interface Sample {
   network_ns: number
   raw_network_ns?: number
   adjusted_network_ns?: number
+  network_floor_ns?: number
+  network_floor_source?: string
   speed_bump_ns?: number
   speed_bump_source?: string
   submission_ns?: number
@@ -153,6 +168,7 @@ export interface Sample {
   closeout_order_refs?: OrderRef[]
   expected_entry_fill?: ExpectedFill
   expected_exit_fill?: ExpectedFill
+  metadata?: Record<string, unknown>
   measurement_mode?: string
   completed_at: string
 }

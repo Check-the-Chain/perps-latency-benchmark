@@ -42,12 +42,14 @@ func AdjustedNetworkNS(sample Sample) int64 {
 	if sample.AdjustedNetworkNS > 0 && speedBumpNS == sample.SpeedBumpNS {
 		return sample.AdjustedNetworkNS
 	}
-	raw := RawNetworkNS(sample)
-	adjusted := raw - speedBumpNS
-	if adjusted < 0 {
-		return 0
+	return AdjustForSpeedBumpNS(RawNetworkNS(sample), speedBumpNS)
+}
+
+func NetworkAdjustedNetworkNS(sample Sample) (int64, bool) {
+	if sample.NetworkFloorNS <= 0 {
+		return 0, false
 	}
-	return adjusted
+	return ClampLatencyNS(AdjustedNetworkNS(sample) - sample.NetworkFloorNS), true
 }
 
 func SpeedBumpNS(sample Sample) int64 {

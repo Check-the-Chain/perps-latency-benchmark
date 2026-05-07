@@ -56,6 +56,24 @@ func HasID(ids map[string]struct{}, values ...any) bool {
 	return false
 }
 
+func CopyIDSet(ids map[string]struct{}) map[string]struct{} {
+	copied := make(map[string]struct{}, len(ids))
+	for id := range ids {
+		copied[id] = struct{}{}
+	}
+	return copied
+}
+
+func FirstMatchingID(ids map[string]struct{}, values ...any) string {
+	for _, value := range values {
+		id := Text(value)
+		if _, ok := ids[id]; ok {
+			return id
+		}
+	}
+	return ""
+}
+
 func ObjectList(value any) []map[string]any {
 	items, ok := value.([]any)
 	if !ok {

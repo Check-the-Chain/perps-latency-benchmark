@@ -130,4 +130,36 @@ var venueSpecs = []VenueSpec{
 			"Start with the status smoke config before submitting RFQs.",
 		},
 	},
+	{
+		Name:      "pacifica",
+		Supported: true,
+		Env: []EnvVar{
+			{Name: "PACIFICA_PRIVATE_KEY", Secret: true, Required: true, Note: "Base58 Solana private key for the Pacifica account or registered API agent wallet."},
+			{Name: "PACIFICA_ACCOUNT", Required: true, Note: "Pacifica account public key. If unset in the builder, it defaults to the private key public key."},
+			{Name: "PACIFICA_AGENT_WALLET", Note: "Optional registered API agent wallet public key when PACIFICA_PRIVATE_KEY is an agent key."},
+		},
+		ManualSteps: []string{
+			"Register the API agent wallet in Pacifica if using an agent key.",
+			"Use websocket transport and tif=ALO/TOB for lowest maker latency; GTC/IOC and market paths have documented latency protection delays.",
+			"Fund the Pacifica account with enough collateral for the configured market.",
+			"Run with: go run ./cmd/perps-bench run --config examples/pacifica-builder.json --env-file .env.pacifica.local --confirm-live",
+		},
+	},
+	{
+		Name:        "nado",
+		WalletKinds: []WalletKind{WalletEVM},
+		Supported:   true,
+		Env: []EnvVar{
+			{Name: "NADO_PRIVATE_KEY", Wallet: WalletEVM, Secret: true, Generated: true, Required: true, Note: "EVM private key used for Nado EIP-712 order signing."},
+			{Name: "NADO_ADDRESS", Wallet: WalletEVM, Generated: true, Note: "Derived EVM address; optional because the builder derives it from NADO_PRIVATE_KEY."},
+			{Name: "NADO_CHAIN_ID", Note: "Optional chain ID override; defaults to Ink mainnet chain ID 57073."},
+			{Name: "NADO_ENDPOINT_CONTRACT", Note: "Endpoint contract used for authenticated subscription confirmation and cleanup signing."},
+		},
+		ManualSteps: []string{
+			"Create/fund the Nado subaccount for the configured product and subaccount name.",
+			"Use websocket Gateway executes for lowest submit latency; REST is available but not the default builder path.",
+			"Keep the default POST_ONLY order type for maker latency and risk-controlled runs.",
+			"Run with: go run ./cmd/perps-bench run --config examples/nado-builder.json --env-file .env.nado.local --confirm-live",
+		},
+	},
 }

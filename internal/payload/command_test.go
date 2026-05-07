@@ -130,3 +130,46 @@ done
 		t.Fatalf("process starts = %q", data)
 	}
 }
+
+func TestResolveCommandUsesDirectPythonOverride(t *testing.T) {
+	got := resolveCommand([]string{
+		"uv",
+		"run",
+		"--with",
+		"lighter-sdk",
+		"python",
+		"internal/venues/lighter/build_payload.py",
+	}, map[string]string{
+		"PERPS_BENCH_PYTHON": "/opt/perps/python/bin/python -I",
+	})
+
+	want := []string{"/opt/perps/python/bin/python", "-I", "internal/venues/lighter/build_payload.py"}
+	if len(got) != len(want) {
+		t.Fatalf("command len = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("command[%d] = %q, want %q: %#v", index, got[index], want[index], got)
+		}
+	}
+}
+
+func TestResolveCommandKeepsUVWithoutDirectPythonOverride(t *testing.T) {
+	command := []string{
+		"uv",
+		"run",
+		"--with",
+		"eth-account",
+		"python",
+		"internal/venues/hyperliquid/cancel_payload.py",
+	}
+	got := resolveCommand(command, nil)
+	if len(got) != len(command) {
+		t.Fatalf("command len = %d, want %d", len(got), len(command))
+	}
+	for index := range command {
+		if got[index] != command[index] {
+			t.Fatalf("command[%d] = %q, want %q", index, got[index], command[index])
+		}
+	}
+}
