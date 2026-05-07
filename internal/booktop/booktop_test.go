@@ -1,9 +1,15 @@
 package booktop
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestVenueParsersParseTopOfBook(t *testing.T) {
@@ -198,5 +204,49 @@ func TestSnapshotsAreCappedToTopLevels(t *testing.T) {
 	}
 	if snapshot.Bids[len(snapshot.Bids)-1].Price == 50 || snapshot.Asks[len(snapshot.Asks)-1].Price == 200 {
 		t.Fatalf("retained levels outside top %d: %+v %+v", maxSnapshotLevels, snapshot.Bids, snapshot.Asks)
+	}
+}
+
+func TestTrackerRunClosesConnectionOnContextCancel(t *testing.T) {
+	connected := make(chan struct{})
+	closed := make(chan struct{})
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade: %v", err)
+			return
+		}
+		defer conn.Close()
+		close(connected)
+		_, _, _ = conn.ReadMessage()
+		close(closed)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tracker := NewTracker(Config{URL: "ws" + strings.TrimPrefix(server.URL, "http")})
+	done := make(chan struct{})
+	go func() {
+		tracker.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-connected:
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not connect")
+	}
+
+	cancel()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not close websocket on cancellation")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not stop after cancellation")
 	}
 }

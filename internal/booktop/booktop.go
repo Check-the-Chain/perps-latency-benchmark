@@ -129,7 +129,18 @@ func (t *Tracker) runOnce(ctx context.Context) error {
 	t.mu.Lock()
 	t.conn = conn
 	t.mu.Unlock()
-	defer t.close()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
+	defer func() {
+		close(done)
+		t.close()
+	}()
 
 	if msg := t.parser.Subscribe(t.cfg); len(msg) > 0 {
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
