@@ -18,7 +18,7 @@ export function confirmSampleMs(sample: Sample) {
 
 export function cancelSampleMs(sample: Sample) {
   const durationNS = sample.cleanup?.duration_ns
-  return isCancelCleanup(sample) && durationNS && durationNS > 0
+  return isAccountFeedCancelCleanup(sample) && durationNS && durationNS > 0
     ? nsToMs(durationNS)
     : undefined
 }
@@ -35,6 +35,13 @@ export function isCancelCleanup(sample: Sample) {
   return Boolean(
     sample.cleanup?.ok &&
       sample.cleanup.description?.toLowerCase().includes("cancel")
+  )
+}
+
+export function isAccountFeedCancelCleanup(sample: Sample) {
+  return Boolean(
+    isCancelCleanup(sample) &&
+      sample.cleanup?.metadata?.cleanup_confirmation === "account_feed"
   )
 }
 
