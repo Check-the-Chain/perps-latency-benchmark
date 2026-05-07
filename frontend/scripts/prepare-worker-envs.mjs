@@ -45,14 +45,18 @@ config.env = {
   staging: {
     ...emptyBindings,
     name: "perps-latency-dashboard-staging",
-    workers_dev: true,
-    routes: [],
+    workers_dev: false,
+    routes: [
+      {
+        pattern: "staging-latency.perps.trading",
+        custom_domain: true,
+      },
+    ],
     observability: config.observability,
     secrets: config.secrets,
     vars: {
       PERPS_BENCH_API_USER: "bench",
-      PERPS_BENCH_PUBLIC_SITE_URL:
-        "https://perps-latency-dashboard-staging.workers.dev",
+      PERPS_BENCH_PUBLIC_SITE_URL: "https://staging-latency.perps.trading",
     },
   },
   production: {

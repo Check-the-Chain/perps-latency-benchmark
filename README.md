@@ -217,8 +217,9 @@ npm run deploy
 
 The deployment flow uses `staging` as the local/default integration branch and
 `main` as production. Pushes to `staging` deploy the separate Cloudflare Worker
-`perps-latency-dashboard-staging`; merges to `main` deploy production
-`perps-latency-dashboard`.
+`perps-latency-dashboard-staging` at
+`https://staging-latency.perps.trading`; merges to `main` deploy production
+`perps-latency-dashboard` at `https://latency.perps.trading`.
 
 ```bash
 cd frontend
