@@ -28,7 +28,6 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
           <thead className="bg-surface-2 text-muted-foreground">
             <tr>
               <HeaderCell>Venue</HeaderCell>
-              <HeaderCell>Transport</HeaderCell>
               <HeaderCell>Scenario</HeaderCell>
               <HeaderCell>Submission</HeaderCell>
               <HeaderCell>Order</HeaderCell>
@@ -61,18 +60,17 @@ export function LatencyTable({ rows }: { rows: Array<SummaryRow> }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-3 py-8 text-muted-foreground">
+                <td colSpan={14} className="px-3 py-8 text-muted-foreground">
                   No latency data is available for the selected filters.
                 </td>
               </tr>
             ) : (
               sortedRows.map((row) => (
                 <tr
-                  key={`${row.venue}:${row.transport}:${row.scenario}:${row.order_type}:${row.batch_size}:${row.measurement_mode ?? "ack"}`}
+                  key={`${row.venue}:${row.scenario}:${row.order_type}:${row.batch_size}:${row.measurement_mode ?? "ack"}`}
                   className="border-t border-border/70"
                 >
                   <BodyCell className="font-medium">{row.venue}</BodyCell>
-                  <BodyCell>{row.transport}</BodyCell>
                   <BodyCell>{row.scenario}</BodyCell>
                   <BodyCell>{submissionLabel(row)}</BodyCell>
                   <BodyCell>{row.order_type || "unknown"}</BodyCell>
@@ -160,8 +158,8 @@ function compareLatencyValues(
 }
 
 function compareRowIdentity(left: SummaryRow, right: SummaryRow) {
-  return `${left.venue}:${left.transport}:${left.scenario}:${left.order_type}:${left.batch_size}`.localeCompare(
-    `${right.venue}:${right.transport}:${right.scenario}:${right.order_type}:${right.batch_size}`
+  return `${left.venue}:${left.scenario}:${left.order_type}:${left.batch_size}`.localeCompare(
+    `${right.venue}:${right.scenario}:${right.order_type}:${right.batch_size}`
   )
 }
 

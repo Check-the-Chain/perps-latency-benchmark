@@ -76,7 +76,7 @@ export function LatencyTimeseriesChart({
   onScaleModeChange,
   onVenueSelectionChange,
   title = "Latency Timeline",
-  description = "Confirmation latency over time by venue, transport, and order type.",
+  description = "Confirmation latency over time by venue.",
   emptyMessage = "No latency data is available for the selected filters.",
   headerActions,
   valueForSample = confirmSampleMs,
@@ -715,13 +715,7 @@ function buildSeries(
 
     const orderType = sample.order_type || "unknown"
     const measurementMode = sample.measurement_mode || "ack"
-    const key = [
-      sample.venue,
-      sample.transport,
-      sample.scenario,
-      orderType,
-      measurementMode,
-    ].join(":")
+    const key = sample.venue
     const points = grouped.get(key) ?? []
     points.push({
       date,
@@ -729,11 +723,28 @@ function buildSeries(
       ms,
     })
     grouped.set(key, points)
+    const current = metadata.get(key)
     metadata.set(key, {
-      measurementMode,
-      orderType,
-      scenario: sample.scenario,
-      transport: sample.transport,
+      measurementMode: current?.measurementMode === measurementMode
+        ? current.measurementMode
+        : current
+          ? "mixed"
+          : measurementMode,
+      orderType: current?.orderType === orderType
+        ? current.orderType
+        : current
+          ? "mixed"
+          : orderType,
+      scenario: current?.scenario === sample.scenario
+        ? current.scenario
+        : current
+          ? "mixed"
+          : sample.scenario,
+      transport: current?.transport === sample.transport
+        ? current.transport
+        : current
+          ? "mixed"
+          : sample.transport,
       venue: sample.venue,
     })
   }
@@ -742,7 +753,6 @@ function buildSeries(
     .map(([key, points]) => {
       const meta = metadata.get(key)
       const venue = meta?.venue ?? key.split(":")[0] ?? "unknown"
-      const transport = meta?.transport ?? "unknown"
 
       return {
         color: colorForVenue(venue),
@@ -751,8 +761,7 @@ function buildSeries(
         measurementMode: meta?.measurementMode ?? "ack",
         points: points.sort((a, b) => a.date.getTime() - b.date.getTime()),
         scenario: meta?.scenario ?? "unknown",
-        strokeDasharray: strokeForTransport(transport),
-        transport,
+        transport: meta?.transport ?? "unknown",
         venue,
       }
     })
@@ -943,14 +952,6 @@ function formatVenue(value: string) {
     .split(/[_-]/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
-}
-
-function strokeForTransport(transport: string) {
-  const normalized = transport.toLowerCase()
-  if (normalized.includes("ws") || normalized.includes("websocket")) {
-    return "5 4"
-  }
-  return undefined
 }
 
 export function colorForVenue(venue: string) {

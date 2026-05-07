@@ -13,7 +13,7 @@ func TestLatestReadModelGroupsAndProjectsDashboardContract(t *testing.T) {
 	model := newLatestReadModel(updatedAt, 12*time.Hour, []bench.Sample{
 		{
 			Venue:           "hyperliquid",
-			Transport:       "websocket",
+			Transport:       "https",
 			Scenario:        bench.ScenarioSingle,
 			OrderType:       "post_only",
 			MeasurementMode: bench.MeasurementModeWSConfirmation,
@@ -62,6 +62,9 @@ func TestLatestReadModelGroupsAndProjectsDashboardContract(t *testing.T) {
 	hyperliquid := model.Summaries[1]
 	if hyperliquid.Count != 2 || hyperliquid.OK != 2 || hyperliquid.CleanupOK != 2 {
 		t.Fatalf("hyperliquid summary = %+v", hyperliquid)
+	}
+	if hyperliquid.Transport != "mixed" {
+		t.Fatalf("hyperliquid transport = %q", hyperliquid.Transport)
 	}
 	if hyperliquid.CleanupMeanMS != 0.5 {
 		t.Fatalf("cancel cleanup mean = %f", hyperliquid.CleanupMeanMS)

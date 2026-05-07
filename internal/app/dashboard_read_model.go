@@ -59,7 +59,7 @@ func newLatestReadModel(updatedAt time.Time, window time.Duration, samples []ben
 func summarizeGroups(samples []bench.Sample) []summaryRow {
 	groups := make(map[string][]bench.Sample)
 	for _, sample := range samples {
-		key := sample.Venue + "\x00" + sample.Transport + "\x00" + string(sample.Scenario) + "\x00" + sample.OrderType + "\x00" + strconv.Itoa(sample.BatchSize) + "\x00" + string(sample.MeasurementMode)
+		key := sample.Venue + "\x00" + string(sample.Scenario) + "\x00" + sample.OrderType + "\x00" + strconv.Itoa(sample.BatchSize) + "\x00" + string(sample.MeasurementMode)
 		groups[key] = append(groups[key], sample)
 	}
 	rows := make([]summaryRow, 0, len(groups))
@@ -72,7 +72,7 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 		costCount, costMean, costTotal := summarizeCosts(grouped)
 		rows = append(rows, summaryRow{
 			Venue:           first.Venue,
-			Transport:       first.Transport,
+			Transport:       groupTransport(grouped),
 			Scenario:        string(first.Scenario),
 			OrderType:       first.OrderType,
 			MeasurementMode: string(first.MeasurementMode),
@@ -111,12 +111,6 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 			}
 			return 1
 		}
-		if a.Transport < b.Transport {
-			return -1
-		}
-		if a.Transport > b.Transport {
-			return 1
-		}
 		if a.OrderType < b.OrderType {
 			return -1
 		}
@@ -126,6 +120,20 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 		return 0
 	})
 	return rows
+}
+
+func groupTransport(samples []bench.Sample) string {
+	var transport string
+	for _, sample := range samples {
+		if transport == "" {
+			transport = sample.Transport
+			continue
+		}
+		if sample.Transport != transport {
+			return "mixed"
+		}
+	}
+	return transport
 }
 
 func summarizeCosts(samples []bench.Sample) (int, float64, float64) {
