@@ -35,7 +35,7 @@
     "timeout_ms": 30000
   },
   "request": {
-    "transport": "https",
+    "transport": "websocket",
     "builder": {
       "type": "persistent_command",
       "command": [
