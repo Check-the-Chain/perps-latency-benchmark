@@ -31,11 +31,10 @@ import {
   formatLatency,
   formatTime,
 } from "@/lib/format"
-import { cancelSampleMs, confirmP50, confirmP95 } from "@/lib/latency-metric"
+import { confirmP50, confirmP95 } from "@/lib/latency-metric"
 
 const HIDDEN_FRONTEND_VENUES = new Set(["edgex"])
 const GITHUB_URL = "https://github.com/Check-the-Chain/perps-latency-benchmark"
-type CancelChartScenario = "single" | "batch"
 
 export function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
@@ -43,8 +42,6 @@ export function DashboardPage() {
     window: DEFAULT_WINDOW,
   })
   const [chartScale, setChartScale] = useState<LatencyScaleMode>("log")
-  const [cancelChartScenario, setCancelChartScenario] =
-    useState<CancelChartScenario>("single")
 
   const health = useQuery(healthQueryOptions())
   const latest = useQuery(latestQueryOptions(filters.window))
@@ -95,8 +92,6 @@ export function DashboardPage() {
     () => filterSamples(takerSourceSamples, filters),
     [filters, takerSourceSamples]
   )
-  const cancelSamples =
-    cancelChartScenario === "batch" ? batchPostOnlySamples : postOnlySamples
   const postOnlyVenues = useMemo(
     () => venuesForSamples(postOnlySourceSamples),
     [postOnlySourceSamples]
@@ -109,8 +104,6 @@ export function DashboardPage() {
     () => venuesForSamples(takerSourceSamples),
     [takerSourceSamples]
   )
-  const cancelVenues =
-    cancelChartScenario === "batch" ? batchPostOnlyVenues : postOnlyVenues
   const stats = useMemo(() => getStats(filteredSummaries), [filteredSummaries])
 
   return (
@@ -210,31 +203,6 @@ export function DashboardPage() {
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, batchPostOnlyVenues)}
         venues={batchPostOnlyVenues}
-        onScaleModeChange={setChartScale}
-        onVenueSelectionChange={(venues) =>
-          setFilters((current) => ({ ...current, venues }))
-        }
-      />
-      <LatencyTimeseriesChart
-        title="Cancel Confirmation"
-        description={
-          cancelChartScenario === "batch"
-            ? "Five post-only cleanup cancels per sample, measured when every cancel is confirmed through the account feed."
-            : "Post-only cleanup cancel latency, measured when the cancel is confirmed through the account feed."
-        }
-        emptyMessage="No account-feed cancel confirmation data is available for the selected filters."
-        headerActions={
-          <CancelScenarioToggle
-            value={cancelChartScenario}
-            onChange={setCancelChartScenario}
-          />
-        }
-        samples={cancelSamples}
-        scaleMode={chartScale}
-        selectedVenues={selectedVenueList(filters.venues, cancelVenues)}
-        venues={cancelVenues}
-        valueForSample={cancelSampleMs}
-        valueLabel="Cancel confirmation"
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -351,39 +319,6 @@ function isPostOnlyOrder(value: string | undefined) {
 function isTakerOrder(value: string | undefined) {
   const normalized = orderType(value).toLowerCase()
   return ["market", "ioc", "immediate_or_cancel", "fok", "fill_or_kill"].includes(normalized)
-}
-
-function CancelScenarioToggle({
-  onChange,
-  value,
-}: {
-  onChange: (value: CancelChartScenario) => void
-  value: CancelChartScenario
-}) {
-  const options: Array<{ label: string; value: CancelChartScenario }> = [
-    { label: "Single", value: "single" },
-    { label: "Batch", value: "batch" },
-  ]
-
-  return (
-    <div className="flex h-8 overflow-hidden rounded-sm border border-border bg-surface-1 text-[11px]">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={`px-2.5 ${
-            value === option.value
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-          }`}
-          aria-pressed={value === option.value}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
 }
 
 function formatVenue(value: string) {
