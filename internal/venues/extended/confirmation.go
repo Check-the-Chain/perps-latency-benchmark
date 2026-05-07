@@ -29,13 +29,14 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	headers := http.Header{}
 	headers.Set("X-Api-Key", plan.Text("api_key"))
 	headers.Set("User-Agent", "perps-latency-benchmark")
-	client, err := confirmws.Dial(ctx, plan.WSURL, headers, false)
-	if err != nil {
-		return nil, err
-	}
-	return accountfeed.NewConfirmation(client, func(msg map[string]any) (bool, error) {
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, headers, false)
+		},
+	}, func(msg map[string]any) (bool, error) {
 		return matchExtendedConfirmation(msg, plan.IDs, plan.Order)
-	}), nil
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
@@ -51,11 +52,12 @@ func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Co
 	headers := http.Header{}
 	headers.Set("X-Api-Key", plan.Text("api_key"))
 	headers.Set("User-Agent", "perps-latency-benchmark")
-	client, err := confirmws.Dial(ctx, plan.WSURL, headers, false)
-	if err != nil {
-		return nil, err
-	}
-	return accountfeed.NewCancelConfirmation(client, plan.IDs, matchExtendedCancelConfirmation), nil
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, headers, false)
+		},
+	}, plan.IDs, matchExtendedCancelConfirmation)
 }
 
 func matchExtendedConfirmation(msg map[string]any, externalIDs map[string]struct{}, orderType string) (bool, error) {

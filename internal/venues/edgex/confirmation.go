@@ -8,7 +8,6 @@ import (
 	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/confirmws"
-	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/payload"
 	"perps-latency-benchmark/internal/venues/confirmutil"
 )
@@ -27,18 +26,14 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	if headers.Get("X-edgeX-Api-Timestamp") == "" || headers.Get("X-edgeX-Api-Signature") == "" {
 		return nil, fmt.Errorf("edgex confirmation metadata missing websocket auth headers")
 	}
-	client, err := confirmws.Dial(ctx, plan.WSURL, headers, false)
-	if err != nil {
-		return nil, err
-	}
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchEdgeXConfirmation(msg, plan.IDs, plan.Order)
-			})
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("edgex", plan.WSURL))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, headers, false)
 		},
-		Close: client.Close,
-	}, nil
+	}, func(msg map[string]any) (bool, error) {
+		return matchEdgeXConfirmation(msg, plan.IDs, plan.Order)
+	})
 }
 
 func matchEdgeXConfirmation(msg map[string]any, clientIDs map[string]struct{}, orderType string) (bool, error) {

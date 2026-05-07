@@ -26,13 +26,15 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	if plan.WSURL == "" {
 		return nil, nil
 	}
-	client, err := confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
-	if err != nil {
-		return nil, err
-	}
-	return accountfeed.NewConfirmation(client, func(msg map[string]any) (bool, error) {
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		DialKey: plan.WSURL,
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
+		},
+	}, func(msg map[string]any) (bool, error) {
 		return matchAsterConfirmation(msg, plan.IDs, plan.Order)
-	}), nil
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
@@ -45,11 +47,21 @@ func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Co
 	if !ok || err != nil {
 		return nil, err
 	}
-	client, err := confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
-	if err != nil {
-		return nil, err
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		DialKey: plan.WSURL,
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
+		},
+	}, plan.IDs, matchAsterCancelConfirmation)
+}
+
+func asterFeedBase(wsURL string) string {
+	index := strings.LastIndex(wsURL, "/")
+	if index <= len("wss://") {
+		return wsURL
 	}
-	return accountfeed.NewCancelConfirmation(client, plan.IDs, matchAsterCancelConfirmation), nil
+	return wsURL[:index]
 }
 
 func matchAsterConfirmation(msg map[string]any, clientIDs map[string]struct{}, orderType string) (bool, error) {

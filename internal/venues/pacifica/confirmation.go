@@ -23,13 +23,15 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	if !ok || err != nil {
 		return nil, err
 	}
-	client, err := dialAccountOrderUpdates(ctx, plan.WSURL, plan.Text("account"))
-	if err != nil {
-		return nil, err
-	}
-	return accountfeed.NewConfirmation(client, func(msg map[string]any) (bool, error) {
+	account := plan.Text("account")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("pacifica", plan.WSURL, account))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialAccountOrderUpdates(ctx, plan.WSURL, account)
+		},
+	}, func(msg map[string]any) (bool, error) {
 		return matchPacificaConfirmation(msg, plan.IDs, plan.Order)
-	}), nil
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
@@ -42,11 +44,13 @@ func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Co
 	if !ok || err != nil {
 		return nil, err
 	}
-	client, err := dialAccountOrderUpdates(ctx, plan.WSURL, plan.Text("account"))
-	if err != nil {
-		return nil, err
-	}
-	return accountfeed.NewCancelConfirmation(client, plan.IDs, matchPacificaCancelConfirmation), nil
+	account := plan.Text("account")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("pacifica", plan.WSURL, account))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialAccountOrderUpdates(ctx, plan.WSURL, account)
+		},
+	}, plan.IDs, matchPacificaCancelConfirmation)
 }
 
 func dialAccountOrderUpdates(ctx context.Context, wsURL string, account string) (*confirmws.Client, error) {

@@ -3,13 +3,13 @@ package nado
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/confirmws"
-	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/payload"
 	"perps-latency-benchmark/internal/venues/confirmutil"
 )
@@ -35,21 +35,12 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 	if err != nil {
 		return nil, err
 	}
-	feed := sharedNadoFeed(subscription)
-	if err := feed.ensure(ctx, subscription.auth); err != nil {
-		return nil, err
-	}
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("nado", subscription.wsURL, subscription.subaccount, subscription.productID))
+	opts := nadoFeedOptions(subscription)
 	orderType := strings.ToLower(plan.Order)
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			if err := feed.ensure(ctx, subscription.auth); err != nil {
-				return netlatency.Result{}, err
-			}
-			return feed.wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchNadoConfirmation(msg, plan.IDs, orderType)
-			})
-		},
-	}, nil
+	return accountfeed.NewPersistentConfirmation(ctx, feed, opts, func(msg map[string]any) (bool, error) {
+		return matchNadoConfirmation(msg, plan.IDs, orderType)
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
@@ -66,21 +57,8 @@ func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Co
 	if err != nil {
 		return nil, err
 	}
-	feed := sharedNadoFeed(subscription)
-	if err := feed.ensure(ctx, subscription.auth); err != nil {
-		return nil, err
-	}
-	remaining := confirmutil.CopyIDSet(plan.IDs)
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			if err := feed.ensure(ctx, subscription.auth); err != nil {
-				return netlatency.Result{}, err
-			}
-			return feed.wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchNadoCancelConfirmation(msg, remaining), nil
-			})
-		},
-	}, nil
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("nado", subscription.wsURL, subscription.subaccount, subscription.productID))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, nadoFeedOptions(subscription), plan.IDs, matchNadoCancelConfirmation)
 }
 
 func nadoSubscriptionFromPlan(plan accountfeed.Plan, label string) (nadoSubscriptionPlan, error) {
@@ -94,6 +72,31 @@ func nadoSubscriptionFromPlan(plan accountfeed.Plan, label string) (nadoSubscrip
 		productID:  plan.Raw["product_id"],
 		auth:       auth,
 	}, nil
+}
+
+func nadoFeedOptions(plan nadoSubscriptionPlan) accountfeed.FeedOptions {
+	return accountfeed.FeedOptions{
+		AuthUntil: nadoAuthExpiration(plan.auth),
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialOrderUpdates(ctx, plan.wsURL, plan.auth, plan.subaccount, plan.productID)
+		},
+	}
+}
+
+func nadoAuthExpiration(auth map[string]any) time.Time {
+	tx, ok := auth["tx"].(map[string]any)
+	if !ok {
+		return time.Time{}
+	}
+	raw := strings.TrimSpace(confirmutil.Text(tx["expiration"]))
+	if raw == "" {
+		return time.Time{}
+	}
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || ms <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ms*int64(time.Millisecond)).UTC()
 }
 
 func dialOrderUpdates(ctx context.Context, wsURL string, auth map[string]any, subaccount string, productID any) (*confirmws.Client, error) {

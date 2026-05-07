@@ -25,14 +25,16 @@ func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirma
 		return nil, err
 	}
 	marketIndex := plan.Text("market_index")
-	client, err := dialAccountFeed(ctx, plan.WSURL, plan.Text("auth_token"), plan.Text("account_index"), marketIndex, true)
-	if err != nil {
-		return nil, err
-	}
-	confirmation := accountfeed.NewConfirmation(client, func(msg map[string]any) (bool, error) {
+	auth := plan.Text("auth_token")
+	accountIndex := plan.Text("account_index")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("lighter", plan.WSURL, accountIndex, marketIndex, plan.Text("api_key_index")))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialAccountFeed(ctx, plan.WSURL, auth, accountIndex, marketIndex, true)
+		},
+	}, func(msg map[string]any) (bool, error) {
 		return matchLighterConfirmation(msg, marketIndex, plan.IDs, plan.Order)
 	})
-	return confirmation, nil
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
@@ -46,13 +48,16 @@ func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Co
 		return nil, err
 	}
 	marketIndex := plan.Text("market_index")
-	client, err := dialAccountFeed(ctx, plan.WSURL, plan.Text("auth_token"), plan.Text("account_index"), marketIndex, false)
-	if err != nil {
-		return nil, err
-	}
-	return accountfeed.NewCancelConfirmation(client, plan.IDs, func(msg map[string]any, remaining map[string]struct{}) bool {
+	auth := plan.Text("auth_token")
+	accountIndex := plan.Text("account_index")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("lighter", plan.WSURL, accountIndex, marketIndex, plan.Text("api_key_index")))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialAccountFeed(ctx, plan.WSURL, auth, accountIndex, marketIndex, true)
+		},
+	}, plan.IDs, func(msg map[string]any, remaining map[string]struct{}) bool {
 		return matchLighterCancelConfirmation(msg, marketIndex, remaining)
-	}), nil
+	})
 }
 
 func dialAccountFeed(ctx context.Context, wsURL string, auth string, accountIndex string, marketIndex string, includeTrades bool) (*confirmws.Client, error) {

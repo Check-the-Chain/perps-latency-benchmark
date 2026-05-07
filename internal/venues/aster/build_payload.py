@@ -296,6 +296,7 @@ def confirmation_metadata(params: dict[str, Any], signer: AsterSigner, orders: l
         "venue": "aster",
         "ws_url": ws_url,
         "listen_key": listen_key,
+        "user": signer.user,
         "client_order_ids": [order["client_order_id"] for order in orders],
         "order_type": order_type,
     }
