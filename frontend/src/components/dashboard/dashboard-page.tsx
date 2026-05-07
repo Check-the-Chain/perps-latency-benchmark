@@ -42,7 +42,7 @@ export function DashboardPage() {
     venues: "all",
     window: DEFAULT_WINDOW,
   })
-  const [chartScale, setChartScale] = useState<LatencyScaleMode>("linear")
+  const [chartScale, setChartScale] = useState<LatencyScaleMode>("log")
   const [cancelChartScenario, setCancelChartScenario] =
     useState<CancelChartScenario>("single")
 
