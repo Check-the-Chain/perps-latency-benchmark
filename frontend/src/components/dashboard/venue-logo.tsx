@@ -32,6 +32,7 @@ export function VenueLogo({
     <span
       className={cn(
         "inline-flex size-4 shrink-0 items-center justify-center overflow-hidden rounded-[3px] border border-border/70 bg-background text-foreground",
+        logoSurfaceClass(normalized),
         className
       )}
       title={formatVenueLabel(venue)}
@@ -80,6 +81,14 @@ function LogoMark({ venue }: { venue: string }) {
 
 function normalizeVenue(venue: string) {
   return venue.toLowerCase()
+}
+
+function logoSurfaceClass(venue: string) {
+  if (venue === "lighter" || venue === "lighter_free") {
+    return "border-white/10 bg-[#121218]"
+  }
+
+  return ""
 }
 
 function AsterLogo() {
