@@ -13,9 +13,11 @@ import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react"
 import { useMemo, useState } from "react"
 
 export function LatencyTable({
+  isLoading = false,
   rows,
   subtractNetworkFloor,
 }: {
+  isLoading?: boolean
   rows: Array<SummaryRow>
   subtractNetworkFloor: boolean
 }) {
@@ -68,7 +70,9 @@ export function LatencyTable({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {isLoading ? (
+              <TableLoadingRows />
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={14} className="px-3 py-8 text-muted-foreground">
                   No latency data is available for the selected filters.
@@ -105,6 +109,25 @@ export function LatencyTable({
         </table>
       </div>
     </section>
+  )
+}
+
+function TableLoadingRows() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, index) => (
+        <tr key={index} className="border-t border-border/70">
+          {Array.from({ length: 14 }).map((__, cellIndex) => (
+            <td key={cellIndex} className="px-3 py-3">
+              <div
+                className="h-3 animate-pulse rounded-sm bg-muted"
+                style={{ width: `${cellIndex < 2 ? 72 : 44}%` }}
+              />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
   )
 }
 

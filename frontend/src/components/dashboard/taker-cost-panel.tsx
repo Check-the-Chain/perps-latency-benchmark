@@ -19,7 +19,7 @@ import {
 
 import type { Sample } from "@/api/bench"
 import { colorForVenue } from "@/components/charts/latency-timeseries-chart"
-import { VenueName } from "@/components/dashboard/venue-logo"
+import { VenueLogo, VenueName } from "@/components/dashboard/venue-logo"
 import {
   formatAbsBps,
   formatBps,
@@ -64,7 +64,13 @@ const COST_MODE_COPY: Record<CostChartMode, { description: string; title: string
   },
 }
 
-export function TakerCostPanel({ samples }: { samples: Array<Sample> }) {
+export function TakerCostPanel({
+  isLoading = false,
+  samples,
+}: {
+  isLoading?: boolean
+  samples: Array<Sample>
+}) {
   const [chartMode, setChartMode] = useState<CostChartMode>("total")
   const records = useMemo(() => buildTakerCostRecords(samples), [samples])
   const stable = useMemo(() => stableCostWindow(records), [records])
@@ -78,6 +84,29 @@ export function TakerCostPanel({ samples }: { samples: Array<Sample> }) {
     [slippage]
   )
   const benchmarkSize = useMemo(() => formatBenchmarkSize(stable.records), [stable.records])
+
+  if (isLoading) {
+    return (
+      <section
+        className="rounded-sm border border-border/80 bg-surface-1 p-3 text-[11px] text-muted-foreground"
+        aria-label="Loading taker cost data"
+        role="status"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <span>Loading taker cost data</span>
+          <span>Fetching latest fills</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-16 animate-pulse rounded-sm border border-border/60 bg-surface-2/50"
+            />
+          ))}
+        </div>
+      </section>
+    )
+  }
 
   if (records.length === 0) {
     return (
@@ -1025,8 +1054,11 @@ function formatAverageCostVenue(value: string) {
   if (value === "lighter") {
     return (
       <span className="inline-flex min-w-0 items-start gap-2">
-        <VenueName label="Lighter Premium" venue={value} />
-        <span className="block text-muted-foreground/80">base tier</span>
+        <VenueLogo venue={value} />
+        <span className="min-w-0">
+          <span className="block whitespace-nowrap">Lighter Premium</span>
+          <span className="block text-muted-foreground/80">base tier</span>
+        </span>
       </span>
     )
   }

@@ -84,6 +84,7 @@ const TOOLTIP_HIT_RADIUS_PX = 28
 
 export function LatencyTimeseriesChart({
   samples,
+  isLoading = false,
   scaleMode,
   selectedVenues,
   venues,
@@ -97,6 +98,7 @@ export function LatencyTimeseriesChart({
   valueLabel = "Latency",
 }: {
   samples: Array<Sample>
+  isLoading?: boolean
   scaleMode: LatencyScaleMode
   selectedVenues: Array<string>
   venues: Array<string>
@@ -160,7 +162,9 @@ export function LatencyTimeseriesChart({
         <SeriesLegend series={displaySeries} hideOutliers={hideOutliers} />
       </div>
       <div className="h-[360px] px-2 py-3">
-        {displaySeries.length === 0 || !domain ? (
+        {isLoading ? (
+          <ChartLoadingState />
+        ) : displaySeries.length === 0 || !domain ? (
           <div className="flex h-full items-center px-2 text-[11px] text-muted-foreground">
             {emptyMessage}
           </div>
@@ -181,6 +185,29 @@ export function LatencyTimeseriesChart({
         )}
       </div>
     </section>
+  )
+}
+
+function ChartLoadingState() {
+  return (
+    <div
+      className="flex h-full flex-col justify-between px-2 py-1"
+      aria-label="Loading latency chart"
+      role="status"
+    >
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>Loading latency data</span>
+        <span>Fetching latest samples</span>
+      </div>
+      <div className="relative h-[280px] overflow-hidden rounded-sm border border-border/60 bg-surface-2/40">
+        <div className="absolute inset-x-0 top-1/4 border-t border-dashed border-border/70" />
+        <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border/70" />
+        <div className="absolute inset-x-0 top-3/4 border-t border-dashed border-border/70" />
+        <div className="absolute left-[8%] top-[30%] h-1.5 w-[68%] animate-pulse rounded-full bg-primary/25" />
+        <div className="absolute left-[18%] top-[48%] h-1.5 w-[58%] animate-pulse rounded-full bg-profit/20 [animation-delay:120ms]" />
+        <div className="absolute left-[28%] top-[64%] h-1.5 w-[50%] animate-pulse rounded-full bg-warning/20 [animation-delay:240ms]" />
+      </div>
+    </div>
   )
 }
 
@@ -410,15 +437,17 @@ function LatencySvg({
                   pointerEvents="none"
                 />
               ) : null}
-              <LinePath
-                data={item.linePoints}
-                x={(point) => xScale(point.date)}
-                y={(point) => yScale(point.ms)}
-                pointerEvents="none"
-                stroke={item.color}
-                strokeDasharray={item.strokeDasharray}
-                strokeWidth={1.7}
-              />
+              {displayMode !== "raw" ? (
+                <LinePath
+                  data={item.linePoints}
+                  x={(point) => xScale(point.date)}
+                  y={(point) => yScale(point.ms)}
+                  pointerEvents="none"
+                  stroke={item.color}
+                  strokeDasharray={item.strokeDasharray}
+                  strokeWidth={1.7}
+                />
+              ) : null}
               {displayMode !== "trend-raw" && item.linePoints.length > 0 ? (
                 <path
                   d={pointMarkerPath(item.linePoints, xScale, yScale, 2.4)}
