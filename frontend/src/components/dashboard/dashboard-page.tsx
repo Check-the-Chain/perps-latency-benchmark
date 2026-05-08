@@ -408,7 +408,7 @@ function CancelScenarioToggle({
           onClick={() => onChange(option.value)}
           className={`px-2.5 ${
             value === option.value
-              ? "bg-foreground text-background"
+              ? "bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40"
               : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
           }`}
           aria-pressed={value === option.value}

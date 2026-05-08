@@ -529,7 +529,7 @@ function DisplayModeToggle({
           onClick={() => onChange(mode.value)}
           className={`px-2.5 ${
             value === mode.value
-              ? "bg-foreground text-background"
+              ? "bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40"
               : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
           }`}
           aria-pressed={value === mode.value}
@@ -577,7 +577,7 @@ function ScaleToggle({
           onClick={() => onChange(mode)}
           className={`px-2.5 capitalize ${
             value === mode
-              ? "bg-foreground text-background"
+              ? "bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40"
               : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
           }`}
           aria-pressed={value === mode}
