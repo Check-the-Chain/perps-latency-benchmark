@@ -8,6 +8,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { AppShell } from "@/components/layout/app-shell"
+import { ThemeProvider, ThemeScript } from "@/components/theme-provider"
 import "../styles.css"
 
 export interface RouterContext {
@@ -19,7 +20,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#fcfcfc" },
+      { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#fbfbfb" },
+      { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#101217" },
       { title: "Perps Latency Benchmark" },
       {
         name: "description",
@@ -44,12 +46,13 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <ThemeScript />
         <HeadContent />
       </head>
       <body>
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
         <Scripts />
       </body>
     </html>

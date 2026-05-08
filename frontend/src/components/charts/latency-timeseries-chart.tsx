@@ -32,6 +32,7 @@ interface Series {
 }
 
 interface DisplaySeries extends Series {
+  bandPoints: Array<BandPoint>
   linePoints: Array<Point>
   outlierCount: number
   rawPoints: Array<Point>
@@ -42,6 +43,12 @@ interface Point {
   kind: "raw" | "rolling-median"
   ms: number
   sampleCount?: number
+}
+
+interface BandPoint {
+  date: Date
+  lowerMS: number
+  upperMS: number
 }
 
 interface HoverPoint {
@@ -70,7 +77,9 @@ const COLORS = [
 ]
 
 const MARGIN = { top: 18, right: 20, bottom: 34, left: 62 }
-const ROLLING_MEDIAN_POINTS = 9
+const TREND_WINDOW_MS = 30 * 60 * 1000
+const TREND_STEP_MS = 5 * 60 * 1000
+const TREND_LABEL = "30m median"
 const TOOLTIP_HIT_RADIUS_PX = 28
 
 export function LatencyTimeseriesChart({
@@ -345,7 +354,7 @@ function LatencySvg({
           tickValues={yTickValues}
           numTicks={5}
           width={innerWidth}
-          stroke="oklch(0.88 0.004 255 / 0.7)"
+          stroke="var(--chart-grid)"
           strokeDasharray="3 4"
         />
         <AxisLeft
@@ -354,13 +363,13 @@ function LatencySvg({
           numTicks={5}
           tickFormat={(value) => formatLatency(Number(value))}
           tickLabelProps={() => ({
-            fill: "oklch(0.48 0.015 253)",
+            fill: "var(--chart-text)",
             fontFamily: "JetBrains Mono Variable",
             fontSize: 10,
             textAnchor: "end",
           })}
-          stroke="oklch(0.9 0.004 255)"
-          tickStroke="oklch(0.9 0.004 255)"
+          stroke="var(--chart-axis)"
+          tickStroke="var(--chart-axis)"
         />
         <AxisBottom
           top={innerHeight}
@@ -368,13 +377,13 @@ function LatencySvg({
           numTicks={xTickCount}
           tickFormat={(value) => formatTime(new Date(value.valueOf()))}
           tickLabelProps={() => ({
-            fill: "oklch(0.48 0.015 253)",
+            fill: "var(--chart-text)",
             fontFamily: "JetBrains Mono Variable",
             fontSize: 10,
             textAnchor: "middle",
           })}
-          stroke="oklch(0.9 0.004 255)"
-          tickStroke="oklch(0.9 0.004 255)"
+          stroke="var(--chart-axis)"
+          tickStroke="var(--chart-axis)"
         />
         <Group clipPath={`url(#${clipId})`}>
           <rect
@@ -385,6 +394,14 @@ function LatencySvg({
           />
           {series.map((item) => (
             <Group key={item.key}>
+              {displayMode !== "raw" && item.bandPoints.length > 1 ? (
+                <path
+                  d={bandAreaPath(item.bandPoints, xScale, yScale)}
+                  fill={item.color}
+                  opacity={0.12}
+                  pointerEvents="none"
+                />
+              ) : null}
               {displayMode === "trend-raw" && item.rawPoints.length > 0 ? (
                 <path
                   d={pointMarkerPath(item.rawPoints, xScale, yScale, 1.8)}
@@ -426,7 +443,7 @@ function LatencySvg({
               cy={activePoint.y}
               r={4}
               fill={activePoint.color}
-              stroke="white"
+              stroke="var(--chart-point-stroke)"
               strokeWidth={1.5}
               pointerEvents="none"
             />
@@ -472,7 +489,7 @@ function PointTooltip({
       </div>
       <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1">
         <span className="-mx-1 rounded-sm bg-surface-2 px-1 py-0.5 font-bold text-foreground">
-          {hover.point.kind === "rolling-median" ? "Rolling median" : valueLabel}
+          {hover.point.kind === "rolling-median" ? TREND_LABEL : valueLabel}
         </span>
         <span className="-mx-1 rounded-sm bg-surface-2 px-1 py-0.5 font-mono font-bold text-foreground">
           {formatLatency(hover.point.ms)}
@@ -705,6 +722,45 @@ function pointMarkerPath(
     .join("")
 }
 
+function bandAreaPath(
+  points: Array<BandPoint>,
+  xScale: DateScale,
+  yScale: NumberScale
+) {
+  const top = points
+    .map((point) => scaledBandCoordinate(point.date, point.upperMS, xScale, yScale))
+    .filter((point): point is [number, number] => point !== null)
+  const bottom = points
+    .map((point) => scaledBandCoordinate(point.date, point.lowerMS, xScale, yScale))
+    .filter((point): point is [number, number] => point !== null)
+    .reverse()
+  const coordinates = [...top, ...bottom]
+
+  if (coordinates.length < 3) {
+    return ""
+  }
+
+  return coordinates
+    .map(([x, y], index) =>
+      `${index === 0 ? "M" : "L"}${formatSVGNumber(x)},${formatSVGNumber(y)}`
+    )
+    .join("") + "Z"
+}
+
+function scaledBandCoordinate(
+  date: Date,
+  ms: number,
+  xScale: DateScale,
+  yScale: NumberScale
+): [number, number] | null {
+  const x = xScale(date)
+  const y = yScale(ms)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null
+  }
+  return [x, y]
+}
+
 function nearestHoverPoint(
   series: Array<DisplaySeries>,
   plotX: number,
@@ -856,11 +912,12 @@ function buildDisplaySeries(
       const { outlierCount, points: visibleRawPoints } = hideOutliers
         ? withoutUpperOutliers(item.points)
         : { outlierCount: 0, points: item.points }
-      const trendPoints = rollingMedian(item.points, ROLLING_MEDIAN_POINTS)
+      const trend = rollingTrend(visibleRawPoints)
 
       return {
         ...item,
-        linePoints: displayMode === "raw" ? visibleRawPoints : trendPoints,
+        bandPoints: displayMode === "raw" ? [] : trend.bandPoints,
+        linePoints: displayMode === "raw" ? visibleRawPoints : trend.linePoints,
         outlierCount,
         rawPoints: displayMode === "trend-raw" ? visibleRawPoints : [],
       }
@@ -868,21 +925,67 @@ function buildDisplaySeries(
     .filter((item) => item.linePoints.length > 0 || item.rawPoints.length > 0)
 }
 
-function rollingMedian(points: Array<Point>, windowSize: number): Array<Point> {
+function rollingTrend(points: Array<Point>): {
+  bandPoints: Array<BandPoint>
+  linePoints: Array<Point>
+} {
   if (points.length === 0) {
-    return []
+    return { bandPoints: [], linePoints: [] }
   }
 
-  return points.map((point, index) => {
-    const start = Math.max(0, index - windowSize + 1)
-    const window = points.slice(start, index + 1)
-    return {
-      date: point.date,
-      kind: "rolling-median",
-      ms: median(window.map((item) => item.ms)),
-      sampleCount: window.length,
+  const startTime = floorToStep(points[0].date.getTime(), TREND_STEP_MS)
+  const endTime = points[points.length - 1].date.getTime()
+  const halfWindow = TREND_WINDOW_MS / 2
+  const bandPoints: Array<BandPoint> = []
+  const linePoints: Array<Point> = []
+  let startIndex = 0
+  let endIndex = 0
+
+  for (let time = startTime; time <= endTime; time += TREND_STEP_MS) {
+    const minTime = time - halfWindow
+    const maxTime = time + halfWindow
+
+    while (
+      startIndex < points.length &&
+      points[startIndex].date.getTime() < minTime
+    ) {
+      startIndex += 1
     }
-  })
+    while (
+      endIndex < points.length &&
+      points[endIndex].date.getTime() <= maxTime
+    ) {
+      endIndex += 1
+    }
+
+    const values = points
+      .slice(startIndex, endIndex)
+      .map((point) => point.ms)
+      .sort((left, right) => left - right)
+
+    if (values.length === 0) {
+      continue
+    }
+
+    const date = new Date(time)
+    linePoints.push({
+      date,
+      kind: "rolling-median",
+      ms: quantile(values, 0.5),
+      sampleCount: values.length,
+    })
+    bandPoints.push({
+      date,
+      lowerMS: quantile(values, 0.25),
+      upperMS: quantile(values, 0.75),
+    })
+  }
+
+  return { bandPoints, linePoints }
+}
+
+function floorToStep(value: number, step: number) {
+  return Math.floor(value / step) * step
 }
 
 function withoutUpperOutliers(points: Array<Point>) {
@@ -901,13 +1004,6 @@ function withoutUpperOutliers(points: Array<Point>) {
     outlierCount: points.length - filtered.length,
     points: filtered,
   }
-}
-
-function median(values: Array<number>) {
-  return quantile(
-    [...values].sort((a, b) => a - b),
-    0.5
-  )
 }
 
 function quantile(sortedValues: Array<number>, q: number) {
@@ -930,6 +1026,10 @@ function getDomains(series: Array<DisplaySeries>, scaleMode: LatencyScaleMode) {
   const points = series.flatMap((item) => [
     ...item.linePoints,
     ...item.rawPoints,
+    ...item.bandPoints.flatMap((point) => [
+      { date: point.date, kind: "rolling-median" as const, ms: point.lowerMS },
+      { date: point.date, kind: "rolling-median" as const, ms: point.upperMS },
+    ]),
   ])
 
   if (points.length === 0) {

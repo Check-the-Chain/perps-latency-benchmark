@@ -27,7 +27,7 @@
   },
   "vars": {
     "PERPS_BENCH_API_USER": "bench",
-    "PERPS_BENCH_HIDDEN_VENUES": "edgex,nado",
+    "PERPS_BENCH_HIDDEN_VENUES": "edgex",
     "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
   },
   "env": {
@@ -77,7 +77,7 @@
       },
       "vars": {
         "PERPS_BENCH_API_USER": "bench",
-        "PERPS_BENCH_HIDDEN_VENUES": "edgex,nado",
+        "PERPS_BENCH_HIDDEN_VENUES": "edgex",
         "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
       },
     },

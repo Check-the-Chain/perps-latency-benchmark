@@ -20,6 +20,7 @@
 }
 
 :root {
+  color-scheme: light;
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.2 0.015 255);
   --muted: oklch(0.96 0.002 255);
@@ -32,6 +33,34 @@
   --profit: oklch(0.5 0.14 160);
   --loss: oklch(0.55 0.2 25);
   --warning: oklch(0.62 0.15 75);
+  --grid-line: oklch(0.88 0.004 255 / 0.45);
+  --chart-grid: oklch(0.88 0.004 255 / 0.7);
+  --chart-axis: oklch(0.9 0.004 255);
+  --chart-text: oklch(0.48 0.015 253);
+  --chart-reference: oklch(0.62 0.02 253);
+  --chart-point-stroke: oklch(1 0 0);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.16 0.014 255);
+  --foreground: oklch(0.93 0.006 255);
+  --muted: oklch(0.22 0.012 255);
+  --muted-foreground: oklch(0.68 0.014 253);
+  --surface-1: oklch(0.19 0.012 255);
+  --surface-2: oklch(0.24 0.012 255);
+  --border: oklch(0.31 0.012 255);
+  --primary: oklch(0.72 0.14 215);
+  --primary-foreground: oklch(0.14 0.012 255);
+  --profit: oklch(0.72 0.13 160);
+  --loss: oklch(0.72 0.18 25);
+  --warning: oklch(0.78 0.14 75);
+  --grid-line: oklch(0.35 0.012 255 / 0.38);
+  --chart-grid: oklch(0.34 0.012 255 / 0.7);
+  --chart-axis: oklch(0.39 0.012 255);
+  --chart-text: oklch(0.74 0.014 253);
+  --chart-reference: oklch(0.62 0.03 253);
+  --chart-point-stroke: oklch(0.16 0.014 255);
 }
 
 @layer base {
@@ -62,15 +91,15 @@
     background-image:
       repeating-linear-gradient(
         0deg,
-        oklch(0.88 0.004 255 / 0.45) 0,
-        oklch(0.88 0.004 255 / 0.45) 1px,
+        var(--grid-line) 0,
+        var(--grid-line) 1px,
         transparent 1px,
         transparent 24px
       ),
       repeating-linear-gradient(
         90deg,
-        oklch(0.88 0.004 255 / 0.45) 0,
-        oklch(0.88 0.004 255 / 0.45) 1px,
+        var(--grid-line) 0,
+        var(--grid-line) 1px,
         transparent 1px,
         transparent 24px
       );

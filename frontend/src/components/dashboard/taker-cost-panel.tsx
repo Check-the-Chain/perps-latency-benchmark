@@ -508,7 +508,7 @@ function CostChartFrame({
             scale={yScale}
             numTicks={5}
             width={innerWidth}
-            stroke="oklch(0.88 0.004 255 / 0.7)"
+            stroke="var(--chart-grid)"
             strokeDasharray="3 4"
           />
           {zeroY >= 0 && zeroY <= innerHeight ? (
@@ -517,7 +517,7 @@ function CostChartFrame({
               x2={innerWidth}
               y1={zeroY}
               y2={zeroY}
-              stroke="oklch(0.62 0.02 253)"
+              stroke="var(--chart-reference)"
               strokeWidth={1}
             />
           ) : null}
@@ -526,13 +526,13 @@ function CostChartFrame({
             numTicks={5}
             tickFormat={(value) => formatUSD(Number(value))}
             tickLabelProps={() => ({
-              fill: "oklch(0.48 0.015 253)",
+              fill: "var(--chart-text)",
               fontFamily: "JetBrains Mono Variable",
               fontSize: 10,
               textAnchor: "end",
             })}
-            stroke="oklch(0.9 0.004 255)"
-            tickStroke="oklch(0.9 0.004 255)"
+            stroke="var(--chart-axis)"
+            tickStroke="var(--chart-axis)"
           />
           <AxisBottom
             top={innerHeight}
@@ -540,13 +540,13 @@ function CostChartFrame({
             numTicks={xTickCount}
             tickFormat={(value) => formatTime(new Date(value.valueOf()))}
             tickLabelProps={() => ({
-              fill: "oklch(0.48 0.015 253)",
+              fill: "var(--chart-text)",
               fontFamily: "JetBrains Mono Variable",
               fontSize: 10,
               textAnchor: "middle",
             })}
-            stroke="oklch(0.9 0.004 255)"
-            tickStroke="oklch(0.9 0.004 255)"
+            stroke="var(--chart-axis)"
+            tickStroke="var(--chart-axis)"
           />
           <rect
             width={innerWidth}

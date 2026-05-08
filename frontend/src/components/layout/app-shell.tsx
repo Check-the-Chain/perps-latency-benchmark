@@ -1,6 +1,8 @@
 import { Activity } from "lucide-react"
 import type { ReactNode } from "react"
 
+import { ThemeToggle } from "@/components/theme-toggle"
+
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="grid-mesh min-h-svh">
@@ -19,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
           </div>
+          <ThemeToggle />
         </div>
       </header>
       <main className="mx-auto w-full max-w-[1480px] px-3 py-3 sm:px-5 sm:py-4">

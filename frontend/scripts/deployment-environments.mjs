@@ -11,7 +11,7 @@ export const deploymentEnvironments = {
     route: "latency.perps.trading",
     publicSiteURL: "https://latency.perps.trading",
     apiUser: "bench",
-    hiddenVenues: "edgex,nado",
+    hiddenVenues: "edgex",
   },
 }
 
