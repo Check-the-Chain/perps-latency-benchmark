@@ -1,7 +1,6 @@
 "use client"
 
 import { AxisBottom, AxisLeft } from "@visx/axis"
-import { localPoint } from "@visx/event"
 import { GridRows } from "@visx/grid"
 import { Group } from "@visx/group"
 import { ParentSize } from "@visx/responsive"
@@ -18,6 +17,7 @@ import {
 } from "react"
 
 import type { Sample } from "@/api/bench"
+import { VenueName, formatVenueLabel } from "@/components/dashboard/venue-logo"
 import { samplePlotDate } from "@/lib/sample-time"
 import { formatLatency, formatTime } from "@/lib/format"
 import { confirmSampleMs } from "@/lib/latency-metric"
@@ -50,8 +50,15 @@ interface HoverPoint {
   series: Series
 }
 
+interface ScaledHoverPoint extends HoverPoint {
+  x: number
+  y: number
+}
+
 export type LatencyScaleMode = "linear" | "log"
 type LatencyDisplayMode = "raw" | "trend" | "trend-raw"
+type DateScale = (value: Date) => number
+type NumberScale = (value: number) => number
 
 const COLORS = [
   "oklch(0.52 0.17 215)",
@@ -64,6 +71,7 @@ const COLORS = [
 
 const MARGIN = { top: 18, right: 20, bottom: 34, left: 62 }
 const ROLLING_MEDIAN_POINTS = 9
+const TOOLTIP_HIT_RADIUS_PX = 28
 
 export function LatencyTimeseriesChart({
   samples,
@@ -209,6 +217,7 @@ function LatencyFrame({
         displayMode={displayMode}
         height={height}
         hideTooltip={hideTooltip}
+        hover={tooltipData}
         scaleMode={scaleMode}
         series={series}
         showTooltip={showTooltip}
@@ -232,6 +241,7 @@ function LatencySvg({
   displayMode,
   hideTooltip,
   height,
+  hover,
   scaleMode,
   series,
   showTooltip,
@@ -241,6 +251,7 @@ function LatencySvg({
   displayMode: LatencyDisplayMode
   hideTooltip: () => void
   height: number
+  hover?: HoverPoint
   scaleMode: LatencyScaleMode
   series: Array<DisplaySeries>
   showTooltip: (args: {
@@ -279,25 +290,34 @@ function LatencySvg({
     scaleMode === "log"
       ? stableLogTicks(domain.y, (value) => yScale(value), innerHeight)
       : undefined
-  const showPointTooltip = (
-    event: PointerEvent<SVGElement>,
-    item: Series,
-    point: Point
-  ) => {
-    const coords = localPoint(event) ?? {
-      x: MARGIN.left + xScale(point.date),
-      y: MARGIN.top + yScale(point.ms),
+  const showNearestTooltip = (event: PointerEvent<SVGRectElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const plotX = event.clientX - bounds.left
+    const plotY = event.clientY - bounds.top
+    const nearest = nearestHoverPoint(
+      series,
+      plotX,
+      plotY,
+      xScale,
+      yScale
+    )
+    if (!nearest) {
+      hideTooltip()
+      return
     }
     showTooltip({
       tooltipData: {
-        color: item.color,
-        point,
-        series: item,
+        color: nearest.color,
+        point: nearest.point,
+        series: nearest.series,
       },
-      tooltipLeft: coords.x + 10,
-      tooltipTop: coords.y - 62,
+      tooltipLeft: MARGIN.left + nearest.x + 10,
+      tooltipTop: MARGIN.top + nearest.y - 62,
     })
   }
+  const activePoint = hover
+    ? scaledHoverPoint(hover, xScale, yScale)
+    : null
 
   return (
     <svg
@@ -362,38 +382,17 @@ function LatencySvg({
             height={innerHeight}
             fill="transparent"
             onPointerEnter={hideTooltip}
-            onPointerMove={hideTooltip}
           />
           {series.map((item) => (
             <Group key={item.key}>
-              {displayMode === "trend-raw"
-                ? item.rawPoints.map((point) => (
-                    <Group
-                      key={`${item.key}:raw:${point.date.toISOString()}:${point.ms}`}
-                      onPointerEnter={(event) =>
-                        showPointTooltip(event, item, point)
-                      }
-                      onPointerMove={(event) =>
-                        showPointTooltip(event, item, point)
-                      }
-                      onPointerLeave={hideTooltip}
-                    >
-                      <circle
-                        cx={xScale(point.date)}
-                        cy={yScale(point.ms)}
-                        r={6}
-                        fill="transparent"
-                      />
-                      <circle
-                        cx={xScale(point.date)}
-                        cy={yScale(point.ms)}
-                        r={1.8}
-                        fill={item.color}
-                        opacity={0.28}
-                      />
-                    </Group>
-                  ))
-                : null}
+              {displayMode === "trend-raw" && item.rawPoints.length > 0 ? (
+                <path
+                  d={pointMarkerPath(item.rawPoints, xScale, yScale, 1.8)}
+                  fill={item.color}
+                  opacity={0.28}
+                  pointerEvents="none"
+                />
+              ) : null}
               <LinePath
                 data={item.linePoints}
                 x={(point) => xScale(point.date)}
@@ -403,34 +402,35 @@ function LatencySvg({
                 strokeDasharray={item.strokeDasharray}
                 strokeWidth={1.7}
               />
-              {item.linePoints.map((point) => (
-                <Group
-                  key={`${item.key}:line:${point.date.toISOString()}:${point.ms}`}
-                  onPointerEnter={(event) =>
-                    showPointTooltip(event, item, point)
-                  }
-                  onPointerMove={(event) =>
-                    showPointTooltip(event, item, point)
-                  }
-                  onPointerLeave={hideTooltip}
-                >
-                  <circle
-                    cx={xScale(point.date)}
-                    cy={yScale(point.ms)}
-                    r={7}
-                    fill="transparent"
-                  />
-                  <circle
-                    cx={xScale(point.date)}
-                    cy={yScale(point.ms)}
-                    r={2.4}
-                    fill={item.color}
-                    opacity={displayMode === "trend-raw" ? 0 : 1}
-                  />
-                </Group>
-              ))}
+              {displayMode !== "trend-raw" && item.linePoints.length > 0 ? (
+                <path
+                  d={pointMarkerPath(item.linePoints, xScale, yScale, 2.4)}
+                  fill={item.color}
+                  pointerEvents="none"
+                />
+              ) : null}
             </Group>
           ))}
+          <rect
+            width={innerWidth}
+            height={innerHeight}
+            fill="transparent"
+            onPointerEnter={showNearestTooltip}
+            onPointerMove={showNearestTooltip}
+            onPointerLeave={hideTooltip}
+            onPointerCancel={hideTooltip}
+          />
+          {activePoint ? (
+            <circle
+              cx={activePoint.x}
+              cy={activePoint.y}
+              r={4}
+              fill={activePoint.color}
+              stroke="white"
+              strokeWidth={1.5}
+              pointerEvents="none"
+            />
+          ) : null}
         </Group>
       </Group>
     </svg>
@@ -627,7 +627,7 @@ function ExchangeSelector({
               className="size-1.5 rounded-full"
               style={{ backgroundColor: colorForVenue(venue) }}
             />
-            <span>{venue}</span>
+            <VenueName venue={venue} />
           </label>
         )
       })}
@@ -664,7 +664,11 @@ function SeriesLegend({
               strokeWidth="2"
             />
           </svg>
-          <span className="max-w-[240px] truncate">{item.label}</span>
+          <VenueName
+            className="max-w-[240px]"
+            label={item.label}
+            venue={item.venue}
+          />
           <span className="font-mono text-[9px] text-muted-foreground/80">
             {item.rawPoints.length || item.linePoints.length} pts
           </span>
@@ -677,6 +681,88 @@ function SeriesLegend({
       ))}
     </div>
   )
+}
+
+function pointMarkerPath(
+  points: Array<Point>,
+  xScale: DateScale,
+  yScale: NumberScale,
+  radius: number
+) {
+  return points
+    .map((point) => {
+      const x = xScale(point.date)
+      const y = yScale(point.ms)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return ""
+      }
+      const cx = formatSVGNumber(x)
+      const cy = formatSVGNumber(y)
+      const r = formatSVGNumber(radius)
+      const diameter = formatSVGNumber(radius * 2)
+      return `M${cx},${cy}m-${r},0a${r},${r} 0 1,0 ${diameter},0a${r},${r} 0 1,0 -${diameter},0`
+    })
+    .join("")
+}
+
+function nearestHoverPoint(
+  series: Array<DisplaySeries>,
+  plotX: number,
+  plotY: number,
+  xScale: DateScale,
+  yScale: NumberScale
+): ScaledHoverPoint | null {
+  let nearest: ScaledHoverPoint | null = null
+  let nearestDistance = TOOLTIP_HIT_RADIUS_PX * TOOLTIP_HIT_RADIUS_PX
+
+  const considerPoint = (item: DisplaySeries, point: Point) => {
+    const x = xScale(point.date)
+    const y = yScale(point.ms)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return
+    }
+    const dx = x - plotX
+    const dy = y - plotY
+    const distance = dx * dx + dy * dy
+    if (distance <= nearestDistance) {
+      nearestDistance = distance
+      nearest = {
+        color: item.color,
+        point,
+        series: item,
+        x,
+        y,
+      }
+    }
+  }
+
+  for (const item of series) {
+    for (const point of item.rawPoints) {
+      considerPoint(item, point)
+    }
+    for (const point of item.linePoints) {
+      considerPoint(item, point)
+    }
+  }
+
+  return nearest
+}
+
+function scaledHoverPoint(
+  hover: HoverPoint,
+  xScale: DateScale,
+  yScale: NumberScale
+): ScaledHoverPoint | null {
+  const x = xScale(hover.point.date)
+  const y = yScale(hover.point.ms)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null
+  }
+  return { ...hover, x, y }
+}
+
+function formatSVGNumber(value: number) {
+  return value.toFixed(2)
 }
 
 function buildSeries(
@@ -745,7 +831,7 @@ function batchSubmission(sample: Sample) {
 }
 
 function seriesLabel(venue: string, batchKind: string) {
-  const label = formatVenue(venue)
+  const label = formatVenueLabel(venue)
   if (batchKind === "manual") {
     return `${label} (manual)`
   }
@@ -912,13 +998,6 @@ function stableLogTicks(
   }
 
   return selected.sort((left, right) => left - right)
-}
-
-function formatVenue(value: string) {
-  return value
-    .split(/[_-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ")
 }
 
 export function colorForVenue(venue: string) {

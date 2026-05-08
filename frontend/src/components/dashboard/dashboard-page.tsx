@@ -26,6 +26,7 @@ import { MethodologyPanel } from "@/components/dashboard/methodology-panel"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { StatusPill } from "@/components/dashboard/status-pill"
 import { TakerCostPanel } from "@/components/dashboard/taker-cost-panel"
+import { VenueName } from "@/components/dashboard/venue-logo"
 import {
   formatCount,
   formatLatency,
@@ -197,15 +198,15 @@ export function DashboardPage() {
 
       <section className="grid gap-3 md:grid-cols-2">
         <MetricCard
-          label="Best post-only p50"
-          value={formatLatency(stats.fastestPostOnlyP50 ? confirmP50(stats.fastestPostOnlyP50, filters.subtractNetworkFloor) : undefined)}
-          detail={formatWinnerDetail(stats.fastestPostOnlyP50, filters.subtractNetworkFloor)}
+          label="Best post-only p95"
+          value={formatLatency(stats.fastestPostOnlyP95 ? confirmP95(stats.fastestPostOnlyP95, filters.subtractNetworkFloor) : undefined)}
+          detail={formatWinnerDetail(stats.fastestPostOnlyP95, filters.subtractNetworkFloor, "p50")}
           tone="good"
         />
         <MetricCard
           label="Best taker p50"
           value={formatLatency(stats.fastestTakerP50 ? confirmP50(stats.fastestTakerP50, filters.subtractNetworkFloor) : undefined)}
-          detail={formatWinnerDetail(stats.fastestTakerP50, filters.subtractNetworkFloor)}
+          detail={formatWinnerDetail(stats.fastestTakerP50, filters.subtractNetworkFloor, "p95")}
           tone="good"
         />
       </section>
@@ -300,7 +301,7 @@ function getStats(rows: Array<SummaryRow>, subtractNetworkFloor: boolean) {
   const takerRows = rankedRows.filter((row) => isTakerOrder(row.order_type))
 
   return {
-    fastestPostOnlyP50: minBy(postOnlyRows, (row) => confirmP50(row, subtractNetworkFloor) ?? Number.NaN),
+    fastestPostOnlyP95: minBy(postOnlyRows, (row) => confirmP95(row, subtractNetworkFloor) ?? Number.NaN),
     fastestTakerP50: minBy(takerRows, (row) => confirmP50(row, subtractNetworkFloor) ?? Number.NaN),
     measurementCount,
   }
@@ -349,12 +350,23 @@ function isVisibleVenue(venue: string) {
   return !HIDDEN_FRONTEND_VENUES.has(venue.toLowerCase())
 }
 
-function formatWinnerDetail(row: SummaryRow | null, subtractNetworkFloor = false) {
+function formatWinnerDetail(row: SummaryRow | null, subtractNetworkFloor = false, companionMetric: "p50" | "p95" = "p95") {
   if (!row) {
     return "no matching data"
   }
 
-  return `${formatVenue(row.venue)} / p95 ${formatLatency(confirmP95(row, subtractNetworkFloor))} / ${formatCount(row.ok)} samples`
+  const companionValue =
+    companionMetric === "p50"
+      ? confirmP50(row, subtractNetworkFloor)
+      : confirmP95(row, subtractNetworkFloor)
+
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <VenueName venue={row.venue} />
+      <span>/ {companionMetric} {formatLatency(companionValue)}</span>
+      <span>/ {formatCount(row.ok)} samples</span>
+    </span>
+  )
 }
 
 function isRankableSummaryRow(row: SummaryRow) {
@@ -406,11 +418,4 @@ function CancelScenarioToggle({
       ))}
     </div>
   )
-}
-
-function formatVenue(value: string) {
-  return value
-    .split(/[_-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ")
 }

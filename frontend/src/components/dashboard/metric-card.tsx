@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import type { ReactNode } from "react"
 
 export function MetricCard({
   label,
@@ -8,7 +9,7 @@ export function MetricCard({
 }: {
   label: string
   value: string
-  detail: string
+  detail: ReactNode
   tone?: "neutral" | "good" | "warning" | "bad"
 }) {
   return (

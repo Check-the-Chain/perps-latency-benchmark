@@ -1,4 +1,5 @@
 import type { SummaryRow } from "@/api/bench"
+import { VenueName } from "@/components/dashboard/venue-logo"
 import { formatCount, formatLatency, formatPercent, formatUSD } from "@/lib/format"
 import {
   cancelP50,
@@ -20,7 +21,7 @@ export function LatencyTable({
 }) {
   const [sort, setSort] = useState<SortState>({
     direction: "asc",
-    key: "p50",
+    key: "p95",
   })
   const sortedRows = useMemo(
     () => sortRows(rows, sort, subtractNetworkFloor),
@@ -79,7 +80,9 @@ export function LatencyTable({
                   key={`${row.venue}:${row.scenario}:${row.order_type}:${row.batch_size}:${row.batch_submission ?? ""}:${row.measurement_mode ?? "ack"}`}
                   className="border-t border-border/70"
                 >
-                  <BodyCell className="font-medium">{row.venue}</BodyCell>
+                  <BodyCell className="font-medium">
+                    <VenueName venue={row.venue} />
+                  </BodyCell>
                   <BodyCell>{row.scenario}</BodyCell>
                   <BodyCell>{submissionLabel(row)}</BodyCell>
                   <BodyCell>{row.order_type || "unknown"}</BodyCell>
