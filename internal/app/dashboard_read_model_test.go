@@ -21,8 +21,16 @@ func TestLatestReadModelGroupsAndProjectsDashboardContract(t *testing.T) {
 			NetworkNS:       2_000_000,
 			OK:              true,
 			Classification:  lifecycle.Classification{Status: lifecycle.StatusAccepted},
-			Cleanup:         &bench.CleanupResult{Attempted: true, OK: true, DurationNS: 500_000, Description: "cancel hyperliquid benchmark orders"},
-			Cost:            &bench.SampleCost{Clean: true, TradeCostUSD: 0.03},
+			Cleanup: &bench.CleanupResult{
+				Attempted:   true,
+				OK:          true,
+				DurationNS:  500_000,
+				Description: "cancel hyperliquid benchmark orders",
+				Metadata: map[string]any{
+					bench.CleanupConfirmationMetadataKey: bench.CleanupConfirmationAccountFeed,
+				},
+			},
+			Cost: &bench.SampleCost{Clean: true, TradeCostUSD: 0.03},
 		},
 		{
 			Venue:           "hyperliquid",
@@ -65,9 +73,6 @@ func TestLatestReadModelGroupsAndProjectsDashboardContract(t *testing.T) {
 	}
 	if hyperliquid.Transport != "mixed" {
 		t.Fatalf("hyperliquid transport = %q", hyperliquid.Transport)
-	}
-	if hyperliquid.CleanupMeanMS != 0.5 {
-		t.Fatalf("cancel cleanup mean = %f", hyperliquid.CleanupMeanMS)
 	}
 	if hyperliquid.CostCount != 2 || hyperliquid.CostTotalUSD != 0.08 || hyperliquid.CostMeanUSD != 0.04 {
 		t.Fatalf("cost projection = %+v", hyperliquid)

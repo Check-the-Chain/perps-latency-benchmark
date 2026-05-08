@@ -4,30 +4,56 @@ import { nsToMs } from "@/lib/format"
 const EXTENDED_SPEED_BUMP_NS = 150_000_000
 const EXTENDED_SPEED_BUMP_MS = 150
 
-export function confirmP50(row: SummaryRow) {
-  return adjustedSummaryLatency(row.p50_ms, row, row.raw_p50_ms)
+export function confirmP50(row: SummaryRow, subtractNetworkFloor = false) {
+  return summaryLatency(
+    row,
+    row.p50_ms,
+    row.raw_p50_ms,
+    row.network_adjusted_p50_ms,
+    subtractNetworkFloor
+  )
 }
 
-export function confirmP95(row: SummaryRow) {
-  return adjustedSummaryLatency(row.p95_ms, row, row.raw_p95_ms)
+export function confirmP95(row: SummaryRow, subtractNetworkFloor = false) {
+  return summaryLatency(
+    row,
+    row.p95_ms,
+    row.raw_p95_ms,
+    row.network_adjusted_p95_ms,
+    subtractNetworkFloor
+  )
 }
 
-export function confirmSampleMs(sample: Sample) {
-  return nsToMs(adjustedNetworkNS(sample))
+export function confirmSampleMs(sample: Sample, subtractNetworkFloor = false) {
+  return nsToMs(
+    subtractNetworkFloor
+      ? subtractNetworkFloorNS(adjustedNetworkNS(sample), sample)
+      : adjustedNetworkNS(sample)
+  )
 }
 
-export function cancelSampleMs(sample: Sample) {
+export function cancelSampleMs(sample: Sample, subtractNetworkFloor = false) {
   const durationNS = sample.cleanup?.duration_ns
   return isAccountFeedCancelCleanup(sample) && durationNS && durationNS > 0
-    ? nsToMs(durationNS)
+    ? nsToMs(
+        subtractNetworkFloor
+          ? subtractNetworkFloorNS(durationNS, sample)
+          : durationNS
+      )
     : undefined
 }
 
-export function cancelP50(row: SummaryRow) {
+export function cancelP50(row: SummaryRow, subtractNetworkFloor = false) {
+  if (subtractNetworkFloor) {
+    return positiveMetric(row.network_adjusted_cleanup_p50_ms) ?? positiveMetric(row.cleanup_p50_ms)
+  }
   return positiveMetric(row.cleanup_p50_ms)
 }
 
-export function cancelP95(row: SummaryRow) {
+export function cancelP95(row: SummaryRow, subtractNetworkFloor = false) {
+  if (subtractNetworkFloor) {
+    return positiveMetric(row.network_adjusted_cleanup_p95_ms) ?? positiveMetric(row.cleanup_p95_ms)
+  }
   return positiveMetric(row.cleanup_p95_ms)
 }
 
@@ -45,10 +71,6 @@ export function isAccountFeedCancelCleanup(sample: Sample) {
   )
 }
 
-export function rawConfirmSampleMs(sample: Sample) {
-  return nsToMs(rawNetworkNS(sample))
-}
-
 export function summarySpeedBumpMS(row: SummaryRow) {
   if (
     row.speed_bump_ms &&
@@ -60,29 +82,8 @@ export function summarySpeedBumpMS(row: SummaryRow) {
   return isExtendedTaker(row.venue, row.order_type) ? EXTENDED_SPEED_BUMP_MS : undefined
 }
 
-export function speedBumpSampleMs(sample: Sample) {
-  const speedBumpNS = effectiveSpeedBumpNS(sample)
-  return speedBumpNS > 0
-    ? nsToMs(speedBumpNS)
-    : undefined
-}
-
-export function secondarySampleMs(sample: Sample) {
-  return sample.measurement_mode === "ws_confirmation" && sample.submission_ns && sample.submission_ns > 0
-    ? nsToMs(sample.submission_ns)
-    : undefined
-}
-
 export function primaryLabel(_venue: string) {
   return "Account feed"
-}
-
-export function secondaryLabel(venue: string) {
-  return isHyperliquid(venue) ? "Exchange response" : "Submit ack"
-}
-
-function isHyperliquid(venue: string) {
-  return venue.toLowerCase() === "hyperliquid"
 }
 
 function adjustedSummaryLatency(
@@ -98,6 +99,27 @@ function adjustedSummaryLatency(
     return Math.max(sourceValue - EXTENDED_SPEED_BUMP_MS, 0)
   }
   return value
+}
+
+function summaryLatency(
+  row: SummaryRow,
+  value: number,
+  rawValue: number | undefined,
+  networkAdjustedValue: number | undefined,
+  subtractNetworkFloor: boolean
+) {
+  if (subtractNetworkFloor && networkAdjustedValue && networkAdjustedValue > 0) {
+    return networkAdjustedValue
+  }
+  return adjustedSummaryLatency(value, row, rawValue)
+}
+
+function subtractNetworkFloorNS(value: number, sample: Sample) {
+  const floor = sample.network_floor_ns
+  if (!floor || floor <= 0) {
+    return value
+  }
+  return Math.max(value - floor, 0)
 }
 
 function positiveMetric(value?: number) {

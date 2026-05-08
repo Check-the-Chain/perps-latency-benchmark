@@ -26,23 +26,32 @@ import { MethodologyPanel } from "@/components/dashboard/methodology-panel"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { StatusPill } from "@/components/dashboard/status-pill"
 import { TakerCostPanel } from "@/components/dashboard/taker-cost-panel"
+import { VenueName } from "@/components/dashboard/venue-logo"
 import {
   formatCount,
   formatLatency,
   formatTime,
 } from "@/lib/format"
-import { confirmP50, confirmP95 } from "@/lib/latency-metric"
-import { buildSummaryRows } from "@/lib/sample-summary"
+import {
+  cancelSampleMs,
+  confirmP50,
+  confirmP95,
+  confirmSampleMs,
+} from "@/lib/latency-metric"
 
 const HIDDEN_FRONTEND_VENUES = new Set(["edgex"])
 const GITHUB_URL = "https://github.com/Check-the-Chain/perps-latency-benchmark"
+type CancelChartScenario = "single" | "batch"
 
 export function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
+    subtractNetworkFloor: false,
     venues: "all",
     window: DEFAULT_WINDOW,
   })
   const [chartScale, setChartScale] = useState<LatencyScaleMode>("log")
+  const [cancelChartScenario, setCancelChartScenario] =
+    useState<CancelChartScenario>("single")
 
   const health = useQuery(healthQueryOptions())
   const latest = useQuery(latestQueryOptions(filters.window))
@@ -53,8 +62,9 @@ export function DashboardPage() {
     [measurements]
   )
   const visibleSummaries = useMemo(
-    () => buildSummaryRows(visibleMeasurements),
-    [visibleMeasurements]
+    () =>
+      (latest.data?.summaries ?? []).filter((row) => isVisibleVenue(row.venue)),
+    [latest.data?.summaries]
   )
   const postOnlySourceSamples = useMemo(
     () =>
@@ -92,6 +102,18 @@ export function DashboardPage() {
     () => filterSamples(takerSourceSamples, filters),
     [filters, takerSourceSamples]
   )
+  const cancelSamples =
+    cancelChartScenario === "batch" ? batchPostOnlySamples : postOnlySamples
+  const confirmationValueForSample = useMemo(
+    () => (sample: Sample) =>
+      confirmSampleMs(sample, filters.subtractNetworkFloor),
+    [filters.subtractNetworkFloor]
+  )
+  const cancelValueForSample = useMemo(
+    () => (sample: Sample) =>
+      cancelSampleMs(sample, filters.subtractNetworkFloor),
+    [filters.subtractNetworkFloor]
+  )
   const postOnlyVenues = useMemo(
     () => venuesForSamples(postOnlySourceSamples),
     [postOnlySourceSamples]
@@ -104,7 +126,12 @@ export function DashboardPage() {
     () => venuesForSamples(takerSourceSamples),
     [takerSourceSamples]
   )
-  const stats = useMemo(() => getStats(filteredSummaries), [filteredSummaries])
+  const cancelVenues =
+    cancelChartScenario === "batch" ? batchPostOnlyVenues : postOnlyVenues
+  const stats = useMemo(
+    () => getStats(filteredSummaries, filters.subtractNetworkFloor),
+    [filteredSummaries, filters.subtractNetworkFloor]
+  )
 
   return (
     <div className="space-y-3">
@@ -144,6 +171,8 @@ export function DashboardPage() {
             >
               <svg
                 className="size-3.5"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="currentColor"
                 aria-hidden
@@ -169,20 +198,23 @@ export function DashboardPage() {
 
       <section className="grid gap-3 md:grid-cols-2">
         <MetricCard
-          label="Best post-only p50"
-          value={formatLatency(stats.fastestPostOnlyP50 ? confirmP50(stats.fastestPostOnlyP50) : undefined)}
-          detail={formatWinnerDetail(stats.fastestPostOnlyP50)}
+          label="Best post-only p95"
+          value={formatLatency(stats.fastestPostOnlyP95 ? confirmP95(stats.fastestPostOnlyP95, filters.subtractNetworkFloor) : undefined)}
+          detail={formatWinnerDetail(stats.fastestPostOnlyP95, filters.subtractNetworkFloor, "p50")}
           tone="good"
         />
         <MetricCard
           label="Best taker p50"
-          value={formatLatency(stats.fastestTakerP50 ? confirmP50(stats.fastestTakerP50) : undefined)}
-          detail={formatWinnerDetail(stats.fastestTakerP50)}
+          value={formatLatency(stats.fastestTakerP50 ? confirmP50(stats.fastestTakerP50, filters.subtractNetworkFloor) : undefined)}
+          detail={formatWinnerDetail(stats.fastestTakerP50, filters.subtractNetworkFloor, "p95")}
           tone="good"
         />
       </section>
 
-      <LatencyTable rows={filteredSummaries} />
+      <LatencyTable
+        rows={filteredSummaries}
+        subtractNetworkFloor={filters.subtractNetworkFloor}
+      />
       <InfrastructurePanel />
       <LatencyTimeseriesChart
         title="Post-only Confirmation"
@@ -191,6 +223,7 @@ export function DashboardPage() {
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, postOnlyVenues)}
         venues={postOnlyVenues}
+        valueForSample={confirmationValueForSample}
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -198,11 +231,37 @@ export function DashboardPage() {
       />
       <LatencyTimeseriesChart
         title="Batch Post-only Confirmation"
-        description="Five post-only orders per sample. Hyperliquid, Lighter, and Aster use native batch submits; Extended sends five single-order requests concurrently because no native batch endpoint is documented."
+        description="Five post-only orders per sample. Native batch venues are labeled separately from manual fanout venues that send concurrent single-order requests."
         samples={batchPostOnlySamples}
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, batchPostOnlyVenues)}
         venues={batchPostOnlyVenues}
+        valueForSample={confirmationValueForSample}
+        onScaleModeChange={setChartScale}
+        onVenueSelectionChange={(venues) =>
+          setFilters((current) => ({ ...current, venues }))
+        }
+      />
+      <LatencyTimeseriesChart
+        title="Cancel Confirmation"
+        description={
+          cancelChartScenario === "batch"
+            ? "Five post-only cleanup cancels per sample, measured when every cancel is confirmed through the account feed."
+            : "Post-only cleanup cancel latency, measured when the cancel is confirmed through the account feed."
+        }
+        emptyMessage="No account-feed cancel confirmation data is available for the selected filters."
+        headerActions={
+          <CancelScenarioToggle
+            value={cancelChartScenario}
+            onChange={setCancelChartScenario}
+          />
+        }
+        samples={cancelSamples}
+        scaleMode={chartScale}
+        selectedVenues={selectedVenueList(filters.venues, cancelVenues)}
+        venues={cancelVenues}
+        valueForSample={cancelValueForSample}
+        valueLabel="Cancel confirmation"
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -215,6 +274,7 @@ export function DashboardPage() {
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, takerVenues)}
         venues={takerVenues}
+        valueForSample={confirmationValueForSample}
         onScaleModeChange={setChartScale}
         onVenueSelectionChange={(venues) =>
           setFilters((current) => ({ ...current, venues }))
@@ -234,21 +294,16 @@ function filterSamples(samples: Array<Sample>, filters: DashboardFilters) {
   return samples.filter((sample) => matchesVenue(filters.venues, sample.venue))
 }
 
-function getStats(rows: Array<SummaryRow>) {
+function getStats(rows: Array<SummaryRow>, subtractNetworkFloor: boolean) {
   const measurementCount = rows.reduce((sum, row) => sum + row.count, 0)
-  const ok = rows.reduce((sum, row) => sum + row.ok, 0)
-  const failed = rows.reduce((sum, row) => sum + row.failed, 0)
   const rankedRows = rows.filter(isRankableSummaryRow)
   const postOnlyRows = rankedRows.filter((row) => isPostOnlyOrder(row.order_type))
   const takerRows = rankedRows.filter((row) => isTakerOrder(row.order_type))
 
   return {
-    failed,
-    failureRate: measurementCount > 0 ? failed / measurementCount : 0,
-    fastestPostOnlyP50: minBy(postOnlyRows, (row) => confirmP50(row) ?? Number.NaN),
-    fastestTakerP50: minBy(takerRows, (row) => confirmP50(row) ?? Number.NaN),
+    fastestPostOnlyP95: minBy(postOnlyRows, (row) => confirmP95(row, subtractNetworkFloor) ?? Number.NaN),
+    fastestTakerP50: minBy(takerRows, (row) => confirmP50(row, subtractNetworkFloor) ?? Number.NaN),
     measurementCount,
-    ok,
   }
 }
 
@@ -295,12 +350,23 @@ function isVisibleVenue(venue: string) {
   return !HIDDEN_FRONTEND_VENUES.has(venue.toLowerCase())
 }
 
-function formatWinnerDetail(row: SummaryRow | null) {
+function formatWinnerDetail(row: SummaryRow | null, subtractNetworkFloor = false, companionMetric: "p50" | "p95" = "p95") {
   if (!row) {
     return "no matching data"
   }
 
-  return `${formatVenue(row.venue)} / p95 ${formatLatency(confirmP95(row))} / ${formatCount(row.ok)} samples`
+  const companionValue =
+    companionMetric === "p50"
+      ? confirmP50(row, subtractNetworkFloor)
+      : confirmP95(row, subtractNetworkFloor)
+
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <VenueName venue={row.venue} />
+      <span>/ {companionMetric} {formatLatency(companionValue)}</span>
+      <span>/ {formatCount(row.ok)} samples</span>
+    </span>
+  )
 }
 
 function isRankableSummaryRow(row: SummaryRow) {
@@ -321,9 +387,35 @@ function isTakerOrder(value: string | undefined) {
   return ["market", "ioc", "immediate_or_cancel", "fok", "fill_or_kill"].includes(normalized)
 }
 
-function formatVenue(value: string) {
-  return value
-    .split(/[_-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ")
+function CancelScenarioToggle({
+  onChange,
+  value,
+}: {
+  onChange: (value: CancelChartScenario) => void
+  value: CancelChartScenario
+}) {
+  const options: Array<{ label: string; value: CancelChartScenario }> = [
+    { label: "Single", value: "single" },
+    { label: "Batch", value: "batch" },
+  ]
+
+  return (
+    <div className="flex h-8 overflow-hidden rounded-sm border border-border bg-surface-1 text-[11px]">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`px-2.5 ${
+            value === option.value
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+          }`}
+          aria-pressed={value === option.value}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
 }

@@ -102,6 +102,7 @@ class AsterClient:
             "venue": "aster",
             "ws_url": ws_url,
             "listen_key": listen_key,
+            "user": self.signer.user,
             "client_order_ids": [ref["client_order_id"] for ref in refs],
         }
 

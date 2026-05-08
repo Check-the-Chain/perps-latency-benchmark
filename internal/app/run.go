@@ -114,36 +114,20 @@ func addRunFlags(cmd *cobra.Command, opts *runOptions) {
 }
 
 func runBenchmark(ctx context.Context, cmd *cobra.Command, opts *runOptions) error {
-	cfg, err := loadFileConfig(opts.configPath)
+	plan, err := prepareRunPlan(ctx, runPlanOptions{
+		ConfigPath:         opts.configPath,
+		FallbackVenue:      "mock",
+		ConfirmLive:        opts.confirmLive,
+		AllowInlineSecrets: opts.allowInlineSecrets,
+		ApplyOverrides: func(cfg *fileConfig) {
+			applyFlagOverrides(cmd, opts, cfg)
+		},
+	})
 	if err != nil {
 		return err
 	}
-	applyFlagOverrides(cmd, opts, &cfg)
-	normalizeFileConfig(&cfg)
-	if err := prepareRuntimeEnvironment(cfg, opts); err != nil {
-		return err
-	}
-
-	venueName := cfg.Venue
-	if venueName == "" {
-		venueName = "mock"
-	}
-	venueName = strings.ToLower(venueName)
-	if venueName != "mock" && !opts.confirmLive {
-		return fmt.Errorf("refusing to run live venue %q without --confirm-live", venueName)
-	}
-	if err := validateRunConfig(venueName, cfg); err != nil {
-		return err
-	}
-	if err := validateLifecycleForRun(venueName, cfg); err != nil {
-		return err
-	}
-	if err := validateCleanupForRun(venueName, cfg); err != nil {
-		return err
-	}
-	if err := checkAccountsForRun(venueName, cfg); err != nil {
-		return err
-	}
+	cfg := plan.Config
+	venueName := plan.VenueName
 
 	lock, err := acquireRunLock(venueName, cfg)
 	if err != nil {
@@ -193,11 +177,7 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 		return err
 	}
 
-	venueName := cfg.Venue
-	if venueName == "" {
-		venueName = "http"
-	}
-	venueName = strings.ToLower(venueName)
+	venueName := normalizedVenue(cfg.Venue, "http")
 	if venueName != "mock" && !opts.confirmLive {
 		return fmt.Errorf("refusing to run live venue %q without --confirm-live", venueName)
 	}
@@ -242,6 +222,9 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 			return err
 		}
 		if err := validateCleanupForRun(venueName, variantCfg); err != nil {
+			return err
+		}
+		if err := checkAccountsForRun(venueName, variantCfg); err != nil {
 			return err
 		}
 		result, err := runWithConfig(ctx, venueName, variantCfg)
@@ -427,13 +410,14 @@ func runWithConfig(ctx context.Context, venueName string, cfg fileConfig) (bench
 	if err != nil {
 		return bench.Result{}, err
 	}
-	defer resources.Client.CloseIdleConnections()
+	defer resources.CloseBackground()
 
 	return bench.Runner{
-		Config:  resources.Bench,
-		Client:  resources.Client,
-		Venue:   resources.Venue,
-		Cleanup: resources.Cleanup,
+		Config:          resources.Bench,
+		Client:          resources.Client,
+		Venue:           resources.Venue,
+		Cleanup:         resources.Cleanup,
+		NetworkBaseline: resources.NetworkBaseline,
 	}.Run(ctx)
 }
 

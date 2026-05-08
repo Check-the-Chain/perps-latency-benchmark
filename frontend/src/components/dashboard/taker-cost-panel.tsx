@@ -19,6 +19,7 @@ import {
 
 import type { Sample } from "@/api/bench"
 import { colorForVenue } from "@/components/charts/latency-timeseries-chart"
+import { VenueName } from "@/components/dashboard/venue-logo"
 import {
   formatAbsBps,
   formatBps,
@@ -108,12 +109,12 @@ export function TakerCostPanel({ samples }: { samples: Array<Sample> }) {
         <CostStat
           label="Lowest avg round"
           value={formatUSD(cheapestVenue?.meanCostUSD)}
-          detail={cheapestVenue ? formatVenue(cheapestVenue.venue) : "No comparable rounds"}
+          detail={cheapestVenue ? <VenueName venue={cheapestVenue.venue} /> : "No comparable rounds"}
         />
         <CostStat
           label="Highest avg round"
           value={formatUSD(mostExpensiveVenue?.meanCostUSD)}
-          detail={mostExpensiveVenue ? formatVenue(mostExpensiveVenue.venue) : "No comparable rounds"}
+          detail={mostExpensiveVenue ? <VenueName venue={mostExpensiveVenue.venue} /> : "No comparable rounds"}
         />
       </div>
 
@@ -139,7 +140,7 @@ function CostStat({
   label,
   value,
 }: {
-  detail: string
+  detail: ReactNode
   label: string
   value: string
 }) {
@@ -681,7 +682,7 @@ function CostTooltip({
     <>
       <div className="flex items-center gap-2 text-muted-foreground">
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: hover.color }} />
-        <span>{formatVenue(hover.venue)}</span>
+        <VenueName venue={hover.venue} />
         <span className="ml-auto font-mono">{formatTime(hover.date)}</span>
       </div>
       <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1">
@@ -794,8 +795,7 @@ function VenueCostTable({ rows }: { rows: ReturnType<typeof summarizeSlippage> }
               [...rows].sort((left, right) => left.meanCostUSD - right.meanCostUSD).map((row) => (
                 <tr key={row.venue} className="border-t border-border/70">
                   <BodyCell className="font-medium">
-                    <span className="mr-2 inline-block size-1.5 rounded-full" style={{ backgroundColor: colorForVenue(row.venue) }} />
-                    {formatVenue(row.venue)}
+                    <VenueName venue={row.venue} />
                   </BodyCell>
                   <BodyCell align="right">{formatCount(row.cleanCount)}</BodyCell>
                   <BodyCell align="right">{formatUSD(row.meanCostUSD)}</BodyCell>
@@ -839,7 +839,9 @@ function RecentCostTable({ records }: { records: Array<TakerCostRecord> }) {
             {records.map((record) => (
               <tr key={`${record.venue}:${record.date.toISOString()}`} className="border-t border-border/70">
                 <BodyCell>{formatTime(record.date)}</BodyCell>
-                <BodyCell className="font-medium">{formatVenue(record.venue)}</BodyCell>
+                <BodyCell className="font-medium">
+                  <VenueName venue={record.venue} />
+                </BodyCell>
                 <BodyCell align="right">{formatUSD(record.tradeCostUSD)}</BodyCell>
                 <BodyCell align="right">{formatPrice(record.entryActualPrice)}</BodyCell>
                 <BodyCell align="right">{formatPrice(record.entryExpectedPrice)}</BodyCell>
@@ -1019,24 +1021,17 @@ function numericQuantile(sortedValues: Array<number>, q: number) {
   return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight
 }
 
-function formatVenue(value: string) {
-  return value
-    .split(/[_-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ")
-}
-
 function formatAverageCostVenue(value: string) {
   if (value === "lighter") {
     return (
-      <>
-        <span>Lighter Premium</span>
-        <span className="block">base tier</span>
-      </>
+      <span className="inline-flex min-w-0 items-start gap-2">
+        <VenueName label="Lighter Premium" venue={value} />
+        <span className="block text-muted-foreground/80">base tier</span>
+      </span>
     )
   }
 
-  return formatVenue(value)
+  return <VenueName venue={value} />
 }
 
 function formatBenchmarkSize(records: Array<TakerCostRecord>) {

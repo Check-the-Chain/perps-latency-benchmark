@@ -14,7 +14,9 @@ import (
 	"perps-latency-benchmark/internal/venues/spec"
 )
 
-func buildVenue(name string, cfg fileConfig) (bench.Venue, error) {
+type prebuiltBuilderHook = prebuilt.BuilderParamHook
+
+func buildVenue(name string, cfg fileConfig, baseline bench.NetworkBaselineObserver, builderHook prebuiltBuilderHook) (bench.Venue, error) {
 	switch name {
 	case "mock":
 		return mock.New(mock.Config{
@@ -24,7 +26,7 @@ func buildVenue(name string, cfg fileConfig) (bench.Venue, error) {
 			Transport: cfg.Request.Transport,
 		}), nil
 	case "http":
-		return prebuilt.New(toPrebuiltConfig("http", cfg.Request))
+		return prebuilt.New(toPrebuiltConfig("http", cfg.Request, baseline, builderHook))
 	default:
 		runtime, ok := resolveVenueRuntime(name, cfg)
 		if !ok {
@@ -34,39 +36,45 @@ func buildVenue(name string, cfg fileConfig) (bench.Venue, error) {
 		return runtime.Definition.Build(spec.Config{
 			BaseURL: runtime.Config.BaseURL,
 			WSURL:   runtime.Config.WSURL,
-			Request: toPrebuiltConfig(runtime.Name, runtime.Request),
+			Request: toPrebuiltConfig(runtime.Name, runtime.Request, baseline, builderHook),
 		})
 	}
 }
 
-func toPrebuiltConfig(name string, req requestConfig) prebuilt.Config {
+func toPrebuiltConfig(name string, req requestConfig, baseline bench.NetworkBaselineObserver, builderHook prebuiltBuilderHook) prebuilt.Config {
 	method := req.Method
 	if method == "" {
 		method = http.MethodPost
+	}
+	var observeNetworkRTT func(int64, string)
+	if baseline != nil {
+		observeNetworkRTT = baseline.ObserveRTT
 	}
 	builder, err := payloadBuilder(req.Builder)
 	if err != nil {
 		builder = errorBuilder{err: err}
 	}
 	return prebuilt.Config{
-		Name:            name,
-		Transport:       req.Transport,
-		Method:          method,
-		URL:             req.URL,
-		BatchURL:        req.BatchURL,
-		WSURL:           req.WSURL,
-		WSBatchURL:      req.WSBatchURL,
-		Headers:         req.Headers,
-		Body:            req.Body,
-		BodyFile:        req.BodyFile,
-		BatchBody:       req.BatchBody,
-		BatchBodyFile:   req.BatchBodyFile,
-		WSBody:          req.WSBody,
-		WSBodyFile:      req.WSBodyFile,
-		WSBatchBody:     req.WSBatchBody,
-		WSBatchBodyFile: req.WSBatchBodyFile,
-		Builder:         builder,
-		BuilderParams:   req.Builder.Params,
+		Name:               name,
+		Transport:          req.Transport,
+		Method:             method,
+		URL:                req.URL,
+		BatchURL:           req.BatchURL,
+		WSURL:              req.WSURL,
+		WSBatchURL:         req.WSBatchURL,
+		Headers:            req.Headers,
+		Body:               req.Body,
+		BodyFile:           req.BodyFile,
+		BatchBody:          req.BatchBody,
+		BatchBodyFile:      req.BatchBodyFile,
+		WSBody:             req.WSBody,
+		WSBodyFile:         req.WSBodyFile,
+		WSBatchBody:        req.WSBatchBody,
+		WSBatchBodyFile:    req.WSBatchBodyFile,
+		NetworkRTTObserver: observeNetworkRTT,
+		Builder:            builder,
+		BuilderParams:      req.Builder.Params,
+		BuilderParamHook:   builderHook,
 	}
 }
 

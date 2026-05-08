@@ -6,67 +6,62 @@ import (
 	"net/http"
 	"strings"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/confirmws"
-	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/payload"
 	"perps-latency-benchmark/internal/venues/confirmutil"
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["confirmation"].(map[string]any)
-	if !ok || confirmutil.Text(raw["venue"]) != "aster" {
-		return nil, nil
-	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	if wsURL == "" {
-		return nil, fmt.Errorf("aster confirmation metadata missing ws_url")
-	}
-	clientIDs := confirmutil.IDSet(raw["client_order_ids"])
-	if len(clientIDs) == 0 {
-		return nil, fmt.Errorf("aster confirmation metadata missing client_order_ids")
-	}
-	client, err := confirmws.Dial(ctx, wsURL, http.Header{}, false)
-	if err != nil {
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "confirmation",
+		Venue:    "aster",
+		IDField:  "client_order_ids",
+		Required: []string{"ws_url"},
+	})
+	if !ok || err != nil {
 		return nil, err
 	}
-	orderType := confirmutil.Text(raw["order_type"])
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchAsterConfirmation(msg, clientIDs, orderType)
-			})
+	if plan.WSURL == "" {
+		return nil, nil
+	}
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		DialKey: plan.WSURL,
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
 		},
-		Close: client.Close,
-	}, nil
+	}, func(msg map[string]any) (bool, error) {
+		return matchAsterConfirmation(msg, plan.IDs, plan.Order)
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["cancel_confirmation"].(map[string]any)
-	if !ok || confirmutil.Text(raw["venue"]) != "aster" {
-		return nil, nil
-	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	if wsURL == "" {
-		return nil, fmt.Errorf("aster cancel confirmation metadata missing ws_url")
-	}
-	clientIDs := confirmutil.IDSet(raw["client_order_ids"])
-	if len(clientIDs) == 0 {
-		return nil, fmt.Errorf("aster cancel confirmation metadata missing client_order_ids")
-	}
-	client, err := confirmws.Dial(ctx, wsURL, http.Header{}, false)
-	if err != nil {
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "cancel_confirmation",
+		Venue:    "aster",
+		IDField:  "client_order_ids",
+		Required: []string{"ws_url"},
+	})
+	if !ok || err != nil {
 		return nil, err
 	}
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			remaining := copyIDSet(clientIDs)
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchAsterCancelConfirmation(msg, remaining), nil
-			})
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		DialKey: plan.WSURL,
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
 		},
-		Close: client.Close,
-	}, nil
+	}, plan.IDs, matchAsterCancelConfirmation)
+}
+
+func asterFeedBase(wsURL string) string {
+	index := strings.LastIndex(wsURL, "/")
+	if index <= len("wss://") {
+		return wsURL
+	}
+	return wsURL[:index]
 }
 
 func matchAsterConfirmation(msg map[string]any, clientIDs map[string]struct{}, orderType string) (bool, error) {
@@ -102,7 +97,7 @@ func matchAsterCancelConfirmation(msg map[string]any, remaining map[string]struc
 	if !ok {
 		return false
 	}
-	id := firstMatchingID(remaining, order["c"], order["C"])
+	id := confirmutil.FirstMatchingID(remaining, order["c"], order["C"])
 	if id == "" {
 		return false
 	}
@@ -121,22 +116,4 @@ func isAsterTerminalFailure(status string) bool {
 	default:
 		return strings.Contains(status, "REJECT") || strings.Contains(status, "EXPIRE")
 	}
-}
-
-func copyIDSet(ids map[string]struct{}) map[string]struct{} {
-	copied := make(map[string]struct{}, len(ids))
-	for id := range ids {
-		copied[id] = struct{}{}
-	}
-	return copied
-}
-
-func firstMatchingID(ids map[string]struct{}, values ...any) string {
-	for _, value := range values {
-		id := confirmutil.Text(value)
-		if _, ok := ids[id]; ok {
-			return id
-		}
-	}
-	return ""
 }

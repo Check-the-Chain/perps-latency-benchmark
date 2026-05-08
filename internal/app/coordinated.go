@@ -39,6 +39,7 @@ type coordinatedRunItem struct {
 	config     fileConfig
 	benchCfg   bench.Config
 	client     *netlatency.Client
+	resources  *runResources
 	lock       *runLock
 	rateLimits *rateLimitState
 	cost       *costadapter.CommandAdapter
@@ -115,14 +116,14 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 		}
 		return fmt.Errorf("%s startup cleanup failed: %s", item.Venue.Name(), cleanupErrorText(cleanup))
 	}
-	var allSamples []bench.Sample
+	retainedSamples := make([]bench.Sample, 0, coordinatedSampleRetentionLimit(opts, len(benchItems)))
 	for cycleIndex := 0; ; cycleIndex++ {
 		if opts.cycles > 0 && cycleIndex >= opts.warmupCycles+opts.cycles {
 			break
 		}
 		select {
 		case <-ctx.Done():
-			_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, allSamples)
+			_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, retainedSamples)
 			return nil
 		default:
 		}
@@ -131,7 +132,7 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 		target := nextCoordinatedBoundary(time.Now(), opts.interval)
 		prepareAt := target.Add(-opts.prepareLead)
 		if err := sleepUntil(ctx, prepareAt); err != nil {
-			_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, allSamples)
+			_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, retainedSamples)
 			return nil
 		}
 		if ok := coordinatedRateLimitPreflight(ctx, cmd, items, opts.interval); !ok {
@@ -146,7 +147,7 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 			SpinLead:    opts.spinLead,
 			LockThreads: opts.lockThreads,
 		})
-		allSamples = append(allSamples, samples...)
+		retainedSamples = retainCoordinatedSamples(retainedSamples, samples, coordinatedSampleRetentionLimit(opts, len(benchItems)))
 		if err := db.WriteSamples(ctx, coordinatedSampleRecords(samples, items)); err != nil {
 			return err
 		}
@@ -163,8 +164,38 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 			return err
 		}
 	}
-	_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, allSamples)
+	_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, retainedSamples)
 	return nil
+}
+
+func coordinatedSampleRetentionLimit(opts *coordinatedOptions, itemCount int) int {
+	if itemCount <= 0 {
+		return 0
+	}
+	if opts.cycles > 0 {
+		return itemCount * (opts.warmupCycles + opts.cycles)
+	}
+	if opts.retainHours > 0 && opts.interval > 0 {
+		cycles := int((time.Duration(opts.retainHours) * time.Hour) / opts.interval)
+		if cycles < 1 {
+			cycles = 1
+		}
+		return itemCount * (opts.warmupCycles + cycles + 1)
+	}
+	const fallbackCycles = 256
+	return itemCount * (opts.warmupCycles + fallbackCycles)
+}
+
+func retainCoordinatedSamples(current []bench.Sample, next []bench.Sample, limit int) []bench.Sample {
+	if limit <= 0 {
+		return nil
+	}
+	current = append(current, next...)
+	if len(current) <= limit {
+		return current
+	}
+	copy(current, current[len(current)-limit:])
+	return current[:limit]
 }
 
 func coordinatedStrictCleanupError(samples []bench.Sample, items []bench.CoordinatedItem) error {
@@ -203,32 +234,18 @@ func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID 
 		return nil, nil, err
 	}
 	for _, configPath := range opts.configPaths {
-		cfg, err := loadFileConfig(configPath)
+		plan, err := prepareRunPlan(ctx, runPlanOptions{
+			ConfigPath:         configPath,
+			EnvFiles:           opts.envFiles,
+			FallbackVenue:      "mock",
+			ConfirmLive:        opts.confirmLive,
+			AllowInlineSecrets: opts.allowInlineSecrets,
+		})
 		if err != nil {
-			return fail(err)
+			return fail(fmt.Errorf("%s: %w", configPath, err))
 		}
-		cfg.EnvFiles = append(cfg.EnvFiles, opts.envFiles...)
-		envOpts := &runOptions{allowInlineSecrets: opts.allowInlineSecrets}
-		if err := prepareRuntimeEnvironment(cfg, envOpts); err != nil {
-			return fail(err)
-		}
-		normalizeFileConfig(&cfg)
-		venueName := normalizedVenue(cfg.Venue, "mock")
-		if venueName != "mock" && !opts.confirmLive {
-			return fail(fmt.Errorf("refusing to run live venue %q without --confirm-live", venueName))
-		}
-		if err := validateRunConfig(venueName, cfg); err != nil {
-			return fail(fmt.Errorf("%s: %w", venueName, err))
-		}
-		if err := validateLifecycleForRun(venueName, cfg); err != nil {
-			return fail(fmt.Errorf("%s: %w", venueName, err))
-		}
-		if err := validateCleanupForRun(venueName, cfg); err != nil {
-			return fail(fmt.Errorf("%s: %w", venueName, err))
-		}
-		if err := checkAccountsForRun(venueName, cfg); err != nil {
-			return fail(fmt.Errorf("%s: %w", venueName, err))
-		}
+		cfg := plan.Config
+		venueName := plan.VenueName
 		lock, err := acquireRunLock(venueName, cfg)
 		if err != nil {
 			return fail(fmt.Errorf("%s: %w", venueName, err))
@@ -239,11 +256,11 @@ func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID 
 			return fail(fmt.Errorf("%s: %w", venueName, err))
 		}
 		var book *booktop.Tracker
-		var bookCancel context.CancelFunc
+		var expectedFillBookCancel context.CancelFunc
 		if opts.expectedFill {
 			if tracker, cancel := startBookTracker(context.Background(), resources.Definition, resources.Runtime); tracker != nil {
 				book = tracker
-				bookCancel = cancel
+				expectedFillBookCancel = cancel
 			}
 		}
 		expected, _ := resources.Definition.ExpectedFillOrder(resources.Runtime)
@@ -252,21 +269,18 @@ func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID 
 			config:     resources.Config,
 			benchCfg:   resources.Bench,
 			client:     resources.Client,
+			resources:  resources,
 			lock:       lock,
 			rateLimits: &rateLimitState{},
-			bookCancel: bookCancel,
+			bookCancel: expectedFillBookCancel,
 		}
 		if opts.actualCost {
 			costAdapter, err := buildCostAdapter(venueName, resources.Config)
 			if err != nil {
-				if bookCancel != nil {
-					bookCancel()
+				if expectedFillBookCancel != nil {
+					expectedFillBookCancel()
 				}
-				if resources.Cleanup != nil {
-					_ = resources.Cleanup.Close(context.Background())
-				}
-				_ = resources.Venue.Close(context.Background())
-				resources.Client.CloseIdleConnections()
+				_ = resources.Close(context.Background())
 				lock.Release()
 				return fail(fmt.Errorf("%s cost: %w", venueName, err))
 			}
@@ -274,25 +288,28 @@ func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID 
 		}
 		items = append(items, item)
 		benchItems = append(benchItems, bench.CoordinatedItem{
-			Config:      resources.Bench,
-			Client:      resources.Client,
-			Venue:       resources.Venue,
-			Cleanup:     resources.Cleanup,
-			SpinLead:    opts.spinLead,
-			LockThreads: opts.lockThreads,
-			Book:        book,
-			OrderSide:   expected.Side,
-			OrderSize:   expected.Size,
+			Config:          resources.Bench,
+			Client:          resources.Client,
+			Venue:           resources.Venue,
+			Cleanup:         resources.Cleanup,
+			NetworkBaseline: resources.NetworkBaseline,
+			SpinLead:        opts.spinLead,
+			LockThreads:     opts.lockThreads,
+			Book:            book,
+			OrderSide:       expected.Side,
+			OrderSize:       expected.Size,
 		})
 	}
 	return items, benchItems, nil
 }
 
 func releaseCoordinatedItems(ctx context.Context, items []coordinatedRunItem, benchItems []bench.CoordinatedItem) {
-	bench.CloseCoordinated(ctx, benchItems)
 	for _, item := range items {
 		if item.bookCancel != nil {
 			item.bookCancel()
+		}
+		if item.resources != nil {
+			_ = item.resources.Close(ctx)
 		}
 		if item.cost != nil {
 			_ = item.cost.Close(ctx)

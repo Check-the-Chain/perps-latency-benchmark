@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -187,7 +189,8 @@ func (b *PersistentCommandBuilder) closeLocked() error {
 }
 
 func commandContext(ctx context.Context, cfg CommandConfig) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
+	command := resolveCommand(cfg.Command, cfg.Env)
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Dir = cfg.Directory
 	cmd.Env = os.Environ()
 	for key, value := range cfg.Env {
@@ -199,6 +202,58 @@ func commandContext(ctx context.Context, cfg CommandConfig) *exec.Cmd {
 	}
 	cmd.WaitDelay = 100 * time.Millisecond
 	return cmd
+}
+
+func resolveCommand(command []string, env map[string]string) []string {
+	if replacement := directPythonCommand(command, env); len(replacement) > 0 {
+		return replacement
+	}
+	return command
+}
+
+func directPythonCommand(command []string, env map[string]string) []string {
+	if len(command) == 0 || filepath.Base(command[0]) != "uv" {
+		return nil
+	}
+	pythonIndex := -1
+	for index, arg := range command {
+		if arg == "python" || strings.HasSuffix(arg, "/python") || strings.HasSuffix(arg, "/python3") {
+			pythonIndex = index
+			break
+		}
+	}
+	if pythonIndex < 0 || pythonIndex+1 >= len(command) {
+		return nil
+	}
+	script := command[pythonIndex+1]
+	if !strings.HasSuffix(script, ".py") {
+		return nil
+	}
+	prefix := directPythonPrefix(script, env)
+	if len(prefix) == 0 {
+		return nil
+	}
+	resolved := append([]string{}, prefix...)
+	resolved = append(resolved, script)
+	resolved = append(resolved, command[pythonIndex+2:]...)
+	return resolved
+}
+
+func directPythonPrefix(script string, env map[string]string) []string {
+	_ = script
+	if value := envValue(env, "PERPS_BENCH_PYTHON"); strings.TrimSpace(value) != "" {
+		return strings.Fields(value)
+	}
+	return nil
+}
+
+func envValue(env map[string]string, key string) string {
+	if env != nil {
+		if value, ok := env[key]; ok {
+			return value
+		}
+	}
+	return os.Getenv(key)
 }
 
 func killProcessGroup(cmd *exec.Cmd) error {

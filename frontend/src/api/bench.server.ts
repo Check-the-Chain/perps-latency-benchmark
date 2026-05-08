@@ -5,7 +5,10 @@ const BENCH_API_CACHE_NAME = "perps-bench-api"
 const BENCH_API_CACHE_TTL_SECONDS = 60
 const CACHE_STATUS_HEADER = "x-perps-bench-cache"
 
+type CacheStatus = "HIT" | "MISS" | "BYPASS"
+
 type BenchEnv = Cloudflare.Env & {
+  PERPS_BENCH_HIDDEN_VENUES?: string
   PERPS_BENCH_API_PASSWORD?: string
 }
 
@@ -28,10 +31,14 @@ export async function proxyBenchJSON(path: string) {
   }
 
   try {
-    const response = Response.json(await fetchBenchJSON(path), {
-      headers: cacheHeaders("MISS"),
+    const data = filterBenchJSON(path, await fetchBenchJSON(path))
+    const shouldCache = shouldCacheBenchData(path, data)
+    const response = Response.json(data, {
+      headers: cacheHeaders(shouldCache ? "MISS" : "BYPASS"),
     })
-    await writeCachedBenchResponse(path, response)
+    if (shouldCache) {
+      await writeCachedBenchResponse(path, response)
+    }
     return response
   } catch (error) {
     const body = benchAPIErrorBody(path, error)
@@ -133,7 +140,7 @@ function cacheRequest(path: string) {
   })
 }
 
-function cacheHeaders(status: "HIT" | "MISS") {
+function cacheHeaders(status: CacheStatus) {
   return {
     "Cache-Control": cacheControlHeader(),
     [CACHE_STATUS_HEADER]: status,
@@ -165,4 +172,69 @@ function base64(value: string) {
   }
 
   return Buffer.from(value).toString("base64")
+}
+
+function shouldCacheBenchData(path: string, data: unknown) {
+  if (path.startsWith("/api/latest?")) {
+    return hasNonEmptyArray(data, "summaries")
+  }
+
+  if (path.startsWith("/api/samples?")) {
+    return hasNonEmptyArray(data, "samples")
+  }
+
+  if (path === "/api/health") {
+    return isRecord(data) && data.ok === true
+  }
+
+  return true
+}
+
+function filterBenchJSON(path: string, data: unknown) {
+  const hiddenVenues = hiddenVenueSet()
+  if (hiddenVenues.size === 0 || !isRecord(data)) {
+    return data
+  }
+
+  if (path.startsWith("/api/latest?") && Array.isArray(data.summaries)) {
+    return {
+      ...data,
+      summaries: data.summaries.filter((row) => isVisibleVenueRow(row, hiddenVenues)),
+    }
+  }
+
+  if (path.startsWith("/api/samples?") && Array.isArray(data.samples)) {
+    return {
+      ...data,
+      samples: data.samples.filter((sample) =>
+        isVisibleVenueRow(sample, hiddenVenues)
+      ),
+    }
+  }
+
+  return data
+}
+
+function hiddenVenueSet() {
+  return new Set(
+    (readEnv("PERPS_BENCH_HIDDEN_VENUES") ?? "")
+      .split(",")
+      .map((venue) => venue.trim().toLowerCase())
+      .filter(Boolean)
+  )
+}
+
+function isVisibleVenueRow(value: unknown, hiddenVenues: Set<string>) {
+  if (!isRecord(value) || typeof value.venue !== "string") {
+    return true
+  }
+  return !hiddenVenues.has(value.venue.toLowerCase())
+}
+
+function hasNonEmptyArray(data: unknown, key: string) {
+  return isRecord(data) && Array.isArray(data[key]) && data[key].length > 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }

@@ -1,5 +1,10 @@
 import fs from "node:fs"
 
+import {
+  deploymentEnvironments,
+  workerEnvConfig,
+} from "./deployment-environments.mjs"
+
 const configPath = new URL("../dist/server/wrangler.json", import.meta.url)
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"))
 
@@ -41,41 +46,11 @@ function nonInheritedBindings() {
 
 const emptyBindings = nonInheritedBindings()
 
-config.env = {
-  staging: {
-    ...emptyBindings,
-    name: "perps-latency-dashboard-staging",
-    workers_dev: false,
-    routes: [
-      {
-        pattern: "staging-latency.perps.trading",
-        custom_domain: true,
-      },
-    ],
-    observability: config.observability,
-    secrets: config.secrets,
-    vars: {
-      PERPS_BENCH_API_USER: "bench",
-      PERPS_BENCH_PUBLIC_SITE_URL: "https://staging-latency.perps.trading",
-    },
-  },
-  production: {
-    ...emptyBindings,
-    name: "perps-latency-dashboard",
-    workers_dev: false,
-    routes: [
-      {
-        pattern: "latency.perps.trading",
-        custom_domain: true,
-      },
-    ],
-    observability: config.observability,
-    secrets: config.secrets,
-    vars: {
-      PERPS_BENCH_API_USER: "bench",
-      PERPS_BENCH_PUBLIC_SITE_URL: "https://latency.perps.trading",
-    },
-  },
-}
+config.env = Object.fromEntries(
+  Object.entries(deploymentEnvironments).map(([name, profile]) => [
+    name,
+    workerEnvConfig(profile, config, emptyBindings),
+  ])
+)
 
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`)

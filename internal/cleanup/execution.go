@@ -92,8 +92,8 @@ func (e cleanupExecution) resultFromNetworkWithConfirmation(ctx context.Context,
 	if cleanup.Metadata == nil {
 		cleanup.Metadata = map[string]any{}
 	}
-	cleanup.Metadata["cleanup_confirmation"] = "account_feed"
-	cleanup.Metadata["cleanup_confirmation_transport"] = confirmed.Trace.Transport
+	cleanup.Metadata[bench.CleanupConfirmationMetadataKey] = bench.CleanupConfirmationAccountFeed
+	cleanup.Metadata[bench.CleanupConfirmationTransportMetadataKey] = confirmed.Trace.Transport
 	return cleanup
 }
 

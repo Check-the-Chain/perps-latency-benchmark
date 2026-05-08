@@ -1,0 +1,57 @@
+{
+  "venue": "pacifica",
+  "env_files": [
+    ".env.pacifica.local"
+  ],
+  "benchmark": {
+    "scenario": "batch",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 5,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total",
+    "measurement_mode": "ws_confirmation",
+    "confirmation_timeout_ms": 10000
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 16,
+    "max_idle_conns_per_host": 8,
+    "disable_compression": true
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "cleanup": {
+    "enabled": true,
+    "mode": "best_effort",
+    "scope": "after_sample",
+    "timeout_ms": 15000
+  },
+  "request": {
+    "transport": "websocket",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--with",
+        "solders",
+        "--with",
+        "base58",
+        "python",
+        "internal/venues/pacifica/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "symbol": "BTC",
+        "side": "bid",
+        "amount": "0.001",
+        "price": "75000",
+        "price_step": "10",
+        "tif": "ALO"
+      }
+    }
+  }
+}

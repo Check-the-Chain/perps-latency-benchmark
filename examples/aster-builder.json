@@ -13,8 +13,8 @@
   },
   "http": {
     "timeout_ms": 10000,
-    "max_idle_conns": 256,
-    "max_idle_conns_per_host": 256,
+    "max_idle_conns": 16,
+    "max_idle_conns_per_host": 8,
     "disable_compression": true
   },
   "risk": {
@@ -48,6 +48,9 @@
         "time_in_force": "GTX",
         "quantity": "0.001",
         "price": "75000",
+        "post_only_price_source": "book_top",
+        "post_only_price_offset_bps": 500,
+        "post_only_book_max_age_ms": 2000,
         "new_order_resp_type": "ACK",
         "cleanup_all_open_orders": true
       }

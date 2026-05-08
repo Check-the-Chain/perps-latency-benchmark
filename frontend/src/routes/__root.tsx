@@ -5,9 +5,10 @@ import {
   createRootRouteWithContext,
 } from "@tanstack/react-router"
 import type { QueryClient } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 
 import { AppShell } from "@/components/layout/app-shell"
-import appCss from "../styles.css?url"
+import "../styles.css"
 
 export interface RouterContext {
   queryClient: QueryClient
@@ -25,17 +26,23 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         content: "Live network latency benchmark dashboard for perps venues.",
       },
     ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-    ],
+    links: [{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
   }),
-  shellComponent: RootDocument,
-  component: RootLayout,
+  component: RootComponent,
   notFoundComponent: NotFound,
 })
 
-function RootDocument({ children }: { children: React.ReactNode }) {
+function RootComponent() {
+  return (
+    <RootDocument>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </RootDocument>
+  )
+}
+
+function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
       <head>
@@ -46,14 +53,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  )
-}
-
-function RootLayout() {
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
   )
 }
 

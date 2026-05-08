@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	_ "modernc.org/sqlite"
 
 	"perps-latency-benchmark/internal/bench"
-	"perps-latency-benchmark/internal/lifecycle"
 )
 
 type SQLite struct {
@@ -84,6 +82,8 @@ CREATE TABLE IF NOT EXISTS samples (
   network_ns INTEGER NOT NULL,
   raw_network_ns INTEGER NOT NULL DEFAULT 0,
   adjusted_network_ns INTEGER NOT NULL DEFAULT 0,
+  network_floor_ns INTEGER NOT NULL DEFAULT 0,
+  network_floor_source TEXT NOT NULL DEFAULT '',
   speed_bump_ns INTEGER NOT NULL DEFAULT 0,
   speed_bump_source TEXT NOT NULL DEFAULT '',
   submission_ns INTEGER NOT NULL DEFAULT 0,
@@ -169,6 +169,12 @@ CREATE INDEX IF NOT EXISTS sample_costs_completed_at_idx ON sample_costs(complet
 	if err := s.ensureColumn(ctx, "adjusted_network_ns", `ALTER TABLE samples ADD COLUMN adjusted_network_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "network_floor_ns", `ALTER TABLE samples ADD COLUMN network_floor_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "network_floor_source", `ALTER TABLE samples ADD COLUMN network_floor_source TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := s.ensureColumn(ctx, "speed_bump_ns", `ALTER TABLE samples ADD COLUMN speed_bump_ns INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
@@ -241,10 +247,10 @@ func (s *SQLite) WriteSamples(ctx context.Context, records []SampleRecord) error
 	stmt, err := tx.PrepareContext(ctx, `
 INSERT INTO samples (
   completed_at, scheduled_at, sent_at, venue, run_id, scenario, transport, order_type, latency_mode, measurement_mode, iteration,
-  batch_size, network_ns, raw_network_ns, adjusted_network_ns, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
+  batch_size, network_ns, raw_network_ns, adjusted_network_ns, network_floor_ns, network_floor_source, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
   cleanup_attempted, cleanup_ok, cleanup_status_code, cleanup_duration_ns, cleanup_prepared_ns, cleanup_scheduled_at, cleanup_sent_at, cleanup_start_delay_ns, cleanup_write_delay_ns, cleanup_bytes_read, cleanup_error, cleanup_description,
   cleanup_metadata_json, order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 	if err != nil {
 		_ = tx.Rollback()
@@ -252,86 +258,15 @@ INSERT INTO samples (
 	}
 	defer stmt.Close()
 	for _, record := range records {
-		sample := record.Sample
-		if sample.Warmup {
+		values, ok, err := sampleInsertValues(record)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if !ok {
 			continue
 		}
-		cleanupAttempted, cleanupOK := cleanupFields(sample.Cleanup)
-		cleanupStatusCode, cleanupDurationNS, cleanupPreparedNS, cleanupScheduledAt, cleanupSentAt, cleanupStartDelayNS, cleanupWriteDelayNS, cleanupBytesRead, cleanupError, cleanupDescription := cleanupStorageFields(sample.Cleanup)
-		cleanupMetadataJSON, err := cleanupMetadataJSON(sample.Cleanup)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		metadataJSON, err := metadataJSON(sample.Metadata)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		orderRefsJSON, err := marshalJSON(sample.OrderRefs)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		closeoutRefsJSON, err := marshalJSON(sample.CloseoutOrderRefs)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		expectedEntryJSON, err := marshalOptionalJSON(sample.ExpectedEntryFill)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		expectedExitJSON, err := marshalOptionalJSON(sample.ExpectedExitFill)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		if _, err := stmt.ExecContext(ctx,
-			sample.CompletedAt.UTC().Format(time.RFC3339Nano),
-			formatOptionalTime(sample.ScheduledAt),
-			formatOptionalTime(sample.SentAt),
-			sample.Venue,
-			sample.RunID,
-			string(sample.Scenario),
-			sample.Transport,
-			sample.OrderType,
-			string(record.LatencyMode),
-			string(sample.MeasurementMode),
-			sample.Iteration,
-			sample.BatchSize,
-			sample.NetworkNS,
-			bench.RawNetworkNS(sample),
-			bench.AdjustedNetworkNS(sample),
-			sample.SpeedBumpNS,
-			sample.SpeedBumpSource,
-			sample.SubmissionNS,
-			sample.StartDelayNS,
-			sample.WriteDelayNS,
-			boolInt(sample.OK),
-			string(sample.Classification.Status),
-			sample.Classification.Reason,
-			cleanupAttempted,
-			cleanupOK,
-			cleanupStatusCode,
-			cleanupDurationNS,
-			cleanupPreparedNS,
-			cleanupScheduledAt,
-			cleanupSentAt,
-			cleanupStartDelayNS,
-			cleanupWriteDelayNS,
-			cleanupBytesRead,
-			cleanupError,
-			cleanupDescription,
-			cleanupMetadataJSON,
-			orderRefsJSON,
-			closeoutRefsJSON,
-			expectedEntryJSON,
-			expectedExitJSON,
-			metadataJSON,
-			sample.Error,
-		); err != nil {
+		if _, err := stmt.ExecContext(ctx, values...); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
@@ -451,7 +386,7 @@ func (s *SQLite) RecentSamples(ctx context.Context, since time.Time, limit int) 
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT completed_at, scheduled_at, sent_at, venue, run_id, scenario, transport, order_type, measurement_mode, iteration, batch_size,
-       network_ns, raw_network_ns, adjusted_network_ns, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
+       network_ns, raw_network_ns, adjusted_network_ns, network_floor_ns, network_floor_source, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
        cleanup_attempted, cleanup_ok, cleanup_status_code, cleanup_duration_ns, cleanup_prepared_ns, cleanup_scheduled_at, cleanup_sent_at, cleanup_start_delay_ns, cleanup_write_delay_ns, cleanup_bytes_read, cleanup_error, cleanup_description,
        cleanup_metadata_json, order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
 FROM samples
@@ -469,132 +404,13 @@ LIMIT ?
 
 	var samples []bench.Sample
 	for rows.Next() {
-		var sample bench.Sample
-		var completedAt string
-		var scheduledAt string
-		var sentAt string
-		var scenario string
-		var ok int
-		var status string
-		var cleanupAttempted int
-		var cleanupOK int
-		var cleanupStatusCode int
-		var cleanupDurationNS int64
-		var cleanupPreparedNS int64
-		var cleanupScheduledAt string
-		var cleanupSentAt string
-		var cleanupStartDelayNS int64
-		var cleanupWriteDelayNS int64
-		var cleanupBytesRead int64
-		var cleanupError string
-		var cleanupDescription string
-		var cleanupMetadataJSON string
-		var orderRefsJSON string
-		var closeoutRefsJSON string
-		var expectedEntryJSON string
-		var expectedExitJSON string
-		var metadataJSON string
-		if err := rows.Scan(
-			&completedAt,
-			&scheduledAt,
-			&sentAt,
-			&sample.Venue,
-			&sample.RunID,
-			&scenario,
-			&sample.Transport,
-			&sample.OrderType,
-			&sample.MeasurementMode,
-			&sample.Iteration,
-			&sample.BatchSize,
-			&sample.NetworkNS,
-			&sample.RawNetworkNS,
-			&sample.AdjustedNetworkNS,
-			&sample.SpeedBumpNS,
-			&sample.SpeedBumpSource,
-			&sample.SubmissionNS,
-			&sample.StartDelayNS,
-			&sample.WriteDelayNS,
-			&ok,
-			&status,
-			&sample.Classification.Reason,
-			&cleanupAttempted,
-			&cleanupOK,
-			&cleanupStatusCode,
-			&cleanupDurationNS,
-			&cleanupPreparedNS,
-			&cleanupScheduledAt,
-			&cleanupSentAt,
-			&cleanupStartDelayNS,
-			&cleanupWriteDelayNS,
-			&cleanupBytesRead,
-			&cleanupError,
-			&cleanupDescription,
-			&cleanupMetadataJSON,
-			&orderRefsJSON,
-			&closeoutRefsJSON,
-			&expectedEntryJSON,
-			&expectedExitJSON,
-			&metadataJSON,
-			&sample.Error,
-		); err != nil {
+		var row sampleRow
+		if err := rows.Scan(row.scanDestinations()...); err != nil {
 			return nil, err
 		}
-		parsed, err := time.Parse(time.RFC3339Nano, completedAt)
+		sample, err := row.toSample()
 		if err != nil {
-			return nil, fmt.Errorf("parse completed_at: %w", err)
-		}
-		sample.CompletedAt = parsed
-		sample.ScheduledAt = parseOptionalTime(scheduledAt)
-		sample.SentAt = parseOptionalTime(sentAt)
-		if sample.RawNetworkNS == 0 {
-			sample.RawNetworkNS = sample.NetworkNS
-		}
-		if sample.AdjustedNetworkNS == 0 && sample.NetworkNS > 0 {
-			sample.AdjustedNetworkNS = sample.NetworkNS - sample.SpeedBumpNS
-			if sample.AdjustedNetworkNS < 0 {
-				sample.AdjustedNetworkNS = 0
-			}
-		}
-		sample.Scenario = bench.Scenario(scenario)
-		sample.OK = ok == 1
-		sample.Classification.Status = lifecycle.ClassificationStatus(status)
-		sample.Cleanup = &bench.CleanupResult{
-			Attempted:    cleanupAttempted == 1,
-			OK:           cleanupOK == 1,
-			StatusCode:   cleanupStatusCode,
-			Error:        cleanupError,
-			DurationNS:   cleanupDurationNS,
-			PreparedNS:   cleanupPreparedNS,
-			ScheduledAt:  parseOptionalTime(cleanupScheduledAt),
-			SentAt:       parseOptionalTime(cleanupSentAt),
-			StartDelayNS: cleanupStartDelayNS,
-			WriteDelayNS: cleanupWriteDelayNS,
-			BytesRead:    cleanupBytesRead,
-			Description:  cleanupDescription,
-		}
-		if cleanupMetadataJSON != "" {
-			_ = json.Unmarshal([]byte(cleanupMetadataJSON), &sample.Cleanup.Metadata)
-		}
-		if metadataJSON != "" {
-			_ = json.Unmarshal([]byte(metadataJSON), &sample.Metadata)
-		}
-		if orderRefsJSON != "" {
-			_ = json.Unmarshal([]byte(orderRefsJSON), &sample.OrderRefs)
-		}
-		if closeoutRefsJSON != "" {
-			_ = json.Unmarshal([]byte(closeoutRefsJSON), &sample.CloseoutOrderRefs)
-		}
-		if expectedEntryJSON != "" {
-			var fill bench.ExpectedFill
-			if err := json.Unmarshal([]byte(expectedEntryJSON), &fill); err == nil {
-				sample.ExpectedEntryFill = &fill
-			}
-		}
-		if expectedExitJSON != "" {
-			var fill bench.ExpectedFill
-			if err := json.Unmarshal([]byte(expectedExitJSON), &fill); err == nil {
-				sample.ExpectedExitFill = &fill
-			}
+			return nil, err
 		}
 		samples = append(samples, sample)
 	}

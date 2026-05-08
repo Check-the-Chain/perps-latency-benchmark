@@ -12,10 +12,11 @@ import (
 )
 
 type Runner struct {
-	Config  Config
-	Client  *netlatency.Client
-	Venue   Venue
-	Cleanup CleanupAdapter
+	Config          Config
+	Client          *netlatency.Client
+	Venue           Venue
+	Cleanup         CleanupAdapter
+	NetworkBaseline NetworkBaselineObserver
 }
 
 type confirmationOutcome struct {
@@ -39,58 +40,21 @@ func (r Runner) Run(ctx context.Context) (Result, error) {
 		defer r.Cleanup.Close(ctx)
 	}
 
-	startup := r.beforeRun(ctx, cfg)
-	if startup != nil && !startup.OK && cfg.Cleanup.Mode == CleanupModeStrict {
-		return Result{
-			Venue:           r.Venue.Name(),
-			RunID:           cfg.RunID,
-			Scenario:        cfg.Scenario,
-			LatencyMode:     cfg.LatencyMode,
-			MeasurementMode: cfg.MeasurementMode,
-			StartupCleanup:  startup,
-		}, nil
+	lifecycle := newBenchmarkLifecycle(cfg, r.Venue, r.Cleanup)
+	startup := lifecycle.beforeRun(ctx)
+	if lifecycle.strictStartupFailed(startup) {
+		return lifecycle.startupFailureResult(startup), nil
 	}
 	if cfg.RatePerSecond > 0 {
 		result := r.runOpenLoop(ctx, cfg)
 		result.StartupCleanup = startup
-		result.Reconciliation = r.afterRun(ctx, result)
+		result.Reconciliation = lifecycle.afterRun(ctx, result)
 		return result, nil
 	}
 	result := r.runClosedLoop(ctx, cfg)
 	result.StartupCleanup = startup
-	result.Reconciliation = r.afterRun(ctx, result)
+	result.Reconciliation = lifecycle.afterRun(ctx, result)
 	return result, nil
-}
-
-func (r Runner) beforeRun(ctx context.Context, cfg Config) *CleanupResult {
-	if r.Cleanup == nil || !cfg.Cleanup.Enabled {
-		return nil
-	}
-	hooks, ok := r.Cleanup.(RunCleanupAdapter)
-	if !ok {
-		return nil
-	}
-	cleanup := hooks.BeforeRun(ctx, CleanupRun{
-		Venue:      r.Venue.Name(),
-		RunID:      cfg.RunID,
-		Scenario:   cfg.Scenario,
-		Iterations: cfg.Iterations,
-		Warmups:    cfg.Warmups,
-		BatchSize:  cfg.BatchSize,
-	})
-	return &cleanup
-}
-
-func (r Runner) afterRun(ctx context.Context, result Result) *CleanupResult {
-	if r.Cleanup == nil || !r.Config.Cleanup.Enabled {
-		return nil
-	}
-	hooks, ok := r.Cleanup.(RunCleanupAdapter)
-	if !ok {
-		return nil
-	}
-	cleanup := hooks.AfterRun(ctx, result)
-	return &cleanup
 }
 
 func (r Runner) runClosedLoop(ctx context.Context, cfg Config) Result {
@@ -269,47 +233,48 @@ func (l sampleLifecycle) runPrepared(ctx context.Context, cfg Config, index int,
 		}
 	}
 	networkNS := networkDurationNS(cfg.LatencyMode, measured.Trace)
+	l.observeNetworkTrace(submission.Trace)
 	orderMetadata := ParseOrderMetadata(prepared.Metadata)
-	adjustedNS := networkNS - orderMetadata.SpeedBumpNS
-	if adjustedNS < 0 {
-		adjustedNS = 0
-	}
+	adjustedNS := AdjustForSpeedBumpNS(networkNS, orderMetadata.SpeedBumpNS)
+	networkBaseline := l.networkBaselineSnapshot()
 	sentAt := submission.Trace.StartedAt
 	if scheduledAt.IsZero() {
 		scheduledAt = sentAt
 	}
 	completedAt := time.Now().UTC()
 	sample := Sample{
-		Venue:             l.venue.Name(),
-		RunID:             cfg.RunID,
-		Scenario:          cfg.Scenario,
-		Transport:         transportName(prepared.Transport, submission.Trace.Transport),
-		OrderType:         orderMetadata.OrderType,
-		Index:             index,
-		Iteration:         iteration,
-		Warmup:            warmup,
-		BatchSize:         batchSize,
-		ScheduledAt:       scheduledAt.UTC(),
-		SentAt:            sentAt.UTC(),
-		PreparedNS:        preparedNS,
-		NetworkNS:         networkNS,
-		RawNetworkNS:      networkNS,
-		AdjustedNetworkNS: adjustedNS,
-		SpeedBumpNS:       orderMetadata.SpeedBumpNS,
-		SpeedBumpSource:   orderMetadata.SpeedBumpSource,
-		SubmissionNS:      submissionNS,
-		CorrectedNS:       correctedDurationNS(scheduledAt, completedAt),
-		StartDelayNS:      startDelayNS(scheduledAt, sentAt),
-		WriteDelayNS:      writeDelayNS(scheduledAt, submission.Trace),
-		StatusCode:        measured.StatusCode,
-		BytesRead:         measured.BytesRead,
-		OK:                measurementErr == nil && classification.OK(),
-		Classification:    classification,
-		OrderRefs:         orderMetadata.CleanupOrderRefs,
-		Trace:             measured.Trace,
-		Metadata:          orderMetadata.Debug,
-		MeasurementMode:   cfg.MeasurementMode,
-		CompletedAt:       completedAt,
+		Venue:              l.venue.Name(),
+		RunID:              cfg.RunID,
+		Scenario:           cfg.Scenario,
+		Transport:          transportName(prepared.Transport, submission.Trace.Transport),
+		OrderType:          orderMetadata.OrderType,
+		Index:              index,
+		Iteration:          iteration,
+		Warmup:             warmup,
+		BatchSize:          batchSize,
+		ScheduledAt:        scheduledAt.UTC(),
+		SentAt:             sentAt.UTC(),
+		PreparedNS:         preparedNS,
+		NetworkNS:          networkNS,
+		RawNetworkNS:       networkNS,
+		AdjustedNetworkNS:  adjustedNS,
+		NetworkFloorNS:     networkBaseline.FloorNS,
+		NetworkFloorSource: networkBaseline.Source,
+		SpeedBumpNS:        orderMetadata.SpeedBumpNS,
+		SpeedBumpSource:    orderMetadata.SpeedBumpSource,
+		SubmissionNS:       submissionNS,
+		CorrectedNS:        correctedDurationNS(scheduledAt, completedAt),
+		StartDelayNS:       startDelayNS(scheduledAt, sentAt),
+		WriteDelayNS:       writeDelayNS(scheduledAt, submission.Trace),
+		StatusCode:         measured.StatusCode,
+		BytesRead:          measured.BytesRead,
+		OK:                 measurementErr == nil && classification.OK(),
+		Classification:     classification,
+		OrderRefs:          orderMetadata.CleanupOrderRefs,
+		Trace:              measured.Trace,
+		Metadata:           orderMetadata.Debug,
+		MeasurementMode:    cfg.MeasurementMode,
+		CompletedAt:        completedAt,
 	}
 	if measurementErr != nil {
 		if err != nil {
@@ -324,6 +289,20 @@ func (l sampleLifecycle) runPrepared(ctx context.Context, cfg Config, index int,
 		}
 	}
 	return sample
+}
+
+func (l sampleLifecycle) networkBaselineSnapshot() NetworkBaselineSnapshot {
+	if l.networkBaseline == nil {
+		return NetworkBaselineSnapshot{}
+	}
+	return l.networkBaseline.Snapshot()
+}
+
+func (l sampleLifecycle) observeNetworkTrace(trace netlatency.Trace) {
+	if l.networkBaseline == nil {
+		return
+	}
+	l.networkBaseline.ObserveTrace(trace)
 }
 
 func (l sampleLifecycle) startParallelConfirmation(ctx context.Context, cfg Config, prepared PreparedRequest) (<-chan confirmationOutcome, context.CancelFunc) {

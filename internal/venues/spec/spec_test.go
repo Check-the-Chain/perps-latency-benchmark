@@ -31,6 +31,16 @@ func TestDefinitionBuildFillsHTTPAndWebSocketDefaults(t *testing.T) {
 	}
 }
 
+func TestWebSocketHeartbeatConversionLeavesRTTObservationToPrebuilt(t *testing.T) {
+	heartbeat := WebSocketHeartbeat{Message: `{"method":"ping"}`}
+
+	converted := heartbeat.toNetLatency()
+
+	if converted.ObserveRTT != nil {
+		t.Fatal("expected prebuilt adapter to be the only RTT observer seam")
+	}
+}
+
 func TestDefinitionNamesNormalizeAliases(t *testing.T) {
 	definition := Definition{Name: "variational_omni", Aliases: []string{"Variational Omni", "variational-omni"}}
 

@@ -115,6 +115,21 @@ type CleanupRun struct {
 	BatchSize  int      `json:"batch_size"`
 }
 
+type NetworkBaselineSnapshot struct {
+	FloorNS int64
+	Source  string
+}
+
+type NetworkBaselineProvider interface {
+	Snapshot() NetworkBaselineSnapshot
+}
+
+type NetworkBaselineObserver interface {
+	NetworkBaselineProvider
+	ObserveTrace(netlatency.Trace)
+	ObserveRTT(valueNS int64, source string)
+}
+
 type CleanupResult struct {
 	Attempted    bool             `json:"attempted"`
 	OK           bool             `json:"ok"`
@@ -177,42 +192,44 @@ type SampleCost struct {
 }
 
 type Sample struct {
-	Venue             string                   `json:"venue"`
-	RunID             string                   `json:"run_id,omitempty"`
-	Scenario          Scenario                 `json:"scenario"`
-	Transport         string                   `json:"transport"`
-	OrderType         string                   `json:"order_type,omitempty"`
-	Index             int                      `json:"index"`
-	Iteration         int                      `json:"iteration"`
-	Warmup            bool                     `json:"warmup"`
-	BatchSize         int                      `json:"batch_size"`
-	ScheduledAt       time.Time                `json:"scheduled_at,omitempty"`
-	SentAt            time.Time                `json:"sent_at,omitempty"`
-	PreparedNS        int64                    `json:"prepared_ns"`
-	NetworkNS         int64                    `json:"network_ns"`
-	RawNetworkNS      int64                    `json:"raw_network_ns,omitempty"`
-	AdjustedNetworkNS int64                    `json:"adjusted_network_ns,omitempty"`
-	SpeedBumpNS       int64                    `json:"speed_bump_ns,omitempty"`
-	SpeedBumpSource   string                   `json:"speed_bump_source,omitempty"`
-	SubmissionNS      int64                    `json:"submission_ns,omitempty"`
-	CorrectedNS       int64                    `json:"corrected_ns,omitempty"`
-	StartDelayNS      int64                    `json:"start_delay_ns,omitempty"`
-	WriteDelayNS      int64                    `json:"write_delay_ns,omitempty"`
-	StatusCode        int                      `json:"status_code,omitempty"`
-	BytesRead         int64                    `json:"bytes_read,omitempty"`
-	OK                bool                     `json:"ok"`
-	Error             string                   `json:"error,omitempty"`
-	Classification    lifecycle.Classification `json:"classification"`
-	Cleanup           *CleanupResult           `json:"cleanup,omitempty"`
-	Cost              *SampleCost              `json:"cost,omitempty"`
-	OrderRefs         []OrderRef               `json:"order_refs,omitempty"`
-	CloseoutOrderRefs []OrderRef               `json:"closeout_order_refs,omitempty"`
-	ExpectedEntryFill *ExpectedFill            `json:"expected_entry_fill,omitempty"`
-	ExpectedExitFill  *ExpectedFill            `json:"expected_exit_fill,omitempty"`
-	Trace             netlatency.Trace         `json:"trace"`
-	Metadata          map[string]any           `json:"metadata,omitempty"`
-	MeasurementMode   MeasurementMode          `json:"measurement_mode,omitempty"`
-	CompletedAt       time.Time                `json:"completed_at"`
+	Venue              string                   `json:"venue"`
+	RunID              string                   `json:"run_id,omitempty"`
+	Scenario           Scenario                 `json:"scenario"`
+	Transport          string                   `json:"transport"`
+	OrderType          string                   `json:"order_type,omitempty"`
+	Index              int                      `json:"index"`
+	Iteration          int                      `json:"iteration"`
+	Warmup             bool                     `json:"warmup"`
+	BatchSize          int                      `json:"batch_size"`
+	ScheduledAt        time.Time                `json:"scheduled_at,omitempty"`
+	SentAt             time.Time                `json:"sent_at,omitempty"`
+	PreparedNS         int64                    `json:"prepared_ns"`
+	NetworkNS          int64                    `json:"network_ns"`
+	RawNetworkNS       int64                    `json:"raw_network_ns,omitempty"`
+	AdjustedNetworkNS  int64                    `json:"adjusted_network_ns,omitempty"`
+	NetworkFloorNS     int64                    `json:"network_floor_ns,omitempty"`
+	NetworkFloorSource string                   `json:"network_floor_source,omitempty"`
+	SpeedBumpNS        int64                    `json:"speed_bump_ns,omitempty"`
+	SpeedBumpSource    string                   `json:"speed_bump_source,omitempty"`
+	SubmissionNS       int64                    `json:"submission_ns,omitempty"`
+	CorrectedNS        int64                    `json:"corrected_ns,omitempty"`
+	StartDelayNS       int64                    `json:"start_delay_ns,omitempty"`
+	WriteDelayNS       int64                    `json:"write_delay_ns,omitempty"`
+	StatusCode         int                      `json:"status_code,omitempty"`
+	BytesRead          int64                    `json:"bytes_read,omitempty"`
+	OK                 bool                     `json:"ok"`
+	Error              string                   `json:"error,omitempty"`
+	Classification     lifecycle.Classification `json:"classification"`
+	Cleanup            *CleanupResult           `json:"cleanup,omitempty"`
+	Cost               *SampleCost              `json:"cost,omitempty"`
+	OrderRefs          []OrderRef               `json:"order_refs,omitempty"`
+	CloseoutOrderRefs  []OrderRef               `json:"closeout_order_refs,omitempty"`
+	ExpectedEntryFill  *ExpectedFill            `json:"expected_entry_fill,omitempty"`
+	ExpectedExitFill   *ExpectedFill            `json:"expected_exit_fill,omitempty"`
+	Trace              netlatency.Trace         `json:"trace"`
+	Metadata           map[string]any           `json:"metadata,omitempty"`
+	MeasurementMode    MeasurementMode          `json:"measurement_mode,omitempty"`
+	CompletedAt        time.Time                `json:"completed_at"`
 }
 
 type OrderRef struct {

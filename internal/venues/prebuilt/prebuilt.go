@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,34 +15,39 @@ import (
 	"perps-latency-benchmark/internal/lifecycle"
 	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/payload"
+	"perps-latency-benchmark/internal/submission"
 )
 
 type Config struct {
-	Name            string
-	Transport       string
-	Method          string
-	URL             string
-	BatchURL        string
-	WSURL           string
-	WSBatchURL      string
-	Headers         map[string]string
-	Body            string
-	BodyFile        string
-	BatchBody       string
-	BatchBodyFile   string
-	WSBody          string
-	WSBodyFile      string
-	WSBatchBody     string
-	WSBatchBodyFile string
-	WSReadInitial   bool
-	WSHeartbeat     netlatency.WebSocketHeartbeat
-	Builder         payload.Builder
-	BuilderParams   map[string]any
-	Classifier      lifecycle.Classifier
-	Confirmation    ConfirmationFactory
+	Name               string
+	Transport          string
+	Method             string
+	URL                string
+	BatchURL           string
+	WSURL              string
+	WSBatchURL         string
+	Headers            map[string]string
+	Body               string
+	BodyFile           string
+	BatchBody          string
+	BatchBodyFile      string
+	WSBody             string
+	WSBodyFile         string
+	WSBatchBody        string
+	WSBatchBodyFile    string
+	WSReadInitial      bool
+	WSHeartbeat        netlatency.WebSocketHeartbeat
+	NetworkRTTObserver func(valueNS int64, source string)
+	Builder            payload.Builder
+	BuilderParams      map[string]any
+	BuilderParamHook   BuilderParamHook
+	Classifier         lifecycle.Classifier
+	Confirmation       ConfirmationFactory
 }
 
 type ConfirmationFactory func(context.Context, payload.Built) (*bench.Confirmation, error)
+
+type BuilderParamHook func(context.Context, payload.Request) (map[string]any, map[string]any, error)
 
 type Venue struct {
 	name          string
@@ -58,6 +64,7 @@ type Venue struct {
 	transport     string
 	builder       payload.Builder
 	builderParams map[string]any
+	builderHook   BuilderParamHook
 	classifier    lifecycle.Classifier
 	confirmation  ConfirmationFactory
 	wsClient      *netlatency.WebSocketClient
@@ -147,10 +154,11 @@ func New(cfg Config) (*Venue, error) {
 		transport:     transport,
 		builder:       cfg.Builder,
 		builderParams: cfg.BuilderParams,
+		builderHook:   cfg.BuilderParamHook,
 		classifier:    cfg.Classifier,
 		confirmation:  cfg.Confirmation,
-		wsClient:      newWSClientWithHeartbeat(transport, cfg.WSURL, headers, cfg.WSReadInitial, cfg.WSHeartbeat),
-		wsBatchClient: newWSClientWithHeartbeat(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers, cfg.WSReadInitial, cfg.WSHeartbeat),
+		wsClient:      newWSClientWithHeartbeat(transport, cfg.WSURL, headers, cfg.WSReadInitial, cfg.WSHeartbeat, cfg.NetworkRTTObserver),
+		wsBatchClient: newWSClientWithHeartbeat(transport, cmp.Or(cfg.WSBatchURL, cfg.WSURL), headers, cfg.WSReadInitial, cfg.WSHeartbeat, cfg.NetworkRTTObserver),
 	}, nil
 }
 
@@ -170,19 +178,7 @@ func (v *Venue) Prepare(ctx context.Context, scenario bench.Scenario, iteration 
 		return v.prepareParallelHTTP(ctx, iteration, batchSize, built)
 	}
 
-	targetURL := payload.FirstNonEmpty(built.URL, v.url)
-	bodyText := built.Body
-	bodyBase64 := built.BodyBase64
-	fallbackBody := v.body
-	if scenario == bench.ScenarioBatch {
-		bodyText = firstPointer(built.BatchBody, built.Body)
-		bodyBase64 = payload.FirstNonEmpty(built.BatchBodyBase64, built.BodyBase64)
-		fallbackBody = firstBytes(v.batchBody, v.body)
-		if batchURL := payload.FirstNonEmpty(built.BatchURL, v.batchURL); batchURL != "" {
-			targetURL = batchURL
-		}
-	}
-	body, err := payload.Bytes(bodyText, bodyBase64, fallbackBody)
+	request, err := submission.HTTPRequest(built, scenario, v.routeDefaults())
 	if err != nil {
 		return bench.PreparedRequest{}, err
 	}
@@ -191,13 +187,8 @@ func (v *Venue) Prepare(ctx context.Context, scenario bench.Scenario, iteration 
 		return bench.PreparedRequest{}, err
 	}
 	return bench.PreparedRequest{
-		Transport: httpTransportLabel(targetURL),
-		Request: netlatency.RequestTemplate{
-			Method: payload.FirstNonEmpty(built.Method, v.method),
-			URL:    targetURL,
-			Header: payload.MergeHeaders(v.headers, built.Headers),
-			Body:   body,
-		},
+		Transport:  httpTransportLabel(request.URL),
+		Request:    request,
 		Classifier: v.classifier,
 		Confirm:    confirmation,
 		Metadata: mergeMetadata(built.Metadata, map[string]any{
@@ -209,19 +200,9 @@ func (v *Venue) Prepare(ctx context.Context, scenario bench.Scenario, iteration 
 }
 
 func (v *Venue) prepareParallelHTTP(ctx context.Context, iteration int, batchSize int, built payload.Built) (bench.PreparedRequest, error) {
-	requests := make([]netlatency.RequestTemplate, 0, len(built.ParallelRequests))
-	for _, builtRequest := range built.ParallelRequests {
-		body, err := payload.Bytes(builtRequest.Body, builtRequest.BodyBase64, nil)
-		if err != nil {
-			return bench.PreparedRequest{}, err
-		}
-		targetURL := payload.FirstNonEmpty(builtRequest.URL, built.URL, v.url)
-		requests = append(requests, netlatency.RequestTemplate{
-			Method: payload.FirstNonEmpty(builtRequest.Method, built.Method, v.method),
-			URL:    targetURL,
-			Header: payload.MergeHeaders(payload.MergeHeaders(v.headers, built.Headers), builtRequest.Headers),
-			Body:   body,
-		})
+	requests, err := submission.ParallelHTTPRequests(built, v.routeDefaults())
+	if err != nil {
+		return bench.PreparedRequest{}, err
 	}
 	confirmation, err := v.prepareConfirmation(ctx, built)
 	if err != nil {
@@ -247,17 +228,11 @@ func (v *Venue) prepareParallelHTTP(ctx context.Context, iteration int, batchSiz
 }
 
 func (v *Venue) prepareWebSocket(ctx context.Context, scenario bench.Scenario, iteration int, batchSize int, built payload.Built) (bench.PreparedRequest, error) {
-	bodyText := firstPointer(built.WSBody, built.Body)
-	bodyBase64 := payload.FirstNonEmpty(built.WSBodyBase64, built.BodyBase64)
-	fallbackBody := firstBytes(v.wsBody, v.body)
 	client := v.wsClient
 	if scenario == bench.ScenarioBatch {
-		bodyText = firstPointer(built.WSBatchBody, built.BatchBody, built.WSBody, built.Body)
-		bodyBase64 = payload.FirstNonEmpty(built.WSBatchBodyBase64, built.BatchBodyBase64, built.WSBodyBase64, built.BodyBase64)
-		fallbackBody = firstBytes(v.wsBatchBody, v.batchBody, v.wsBody, v.body)
 		client = v.wsBatchClient
 	}
-	body, err := payload.Bytes(bodyText, bodyBase64, fallbackBody)
+	ws, err := submission.WebSocket(built, scenario, v.routeDefaults())
 	if err != nil {
 		return bench.PreparedRequest{}, err
 	}
@@ -271,7 +246,7 @@ func (v *Venue) prepareWebSocket(ctx context.Context, scenario bench.Scenario, i
 	return bench.PreparedRequest{
 		Transport: "websocket",
 		Execute: func(ctx context.Context) (netlatency.Result, error) {
-			return client.Do(ctx, body)
+			return client.Do(ctx, ws.Body)
 		},
 		Classifier: v.classifier,
 		Confirm:    confirmation,
@@ -281,6 +256,21 @@ func (v *Venue) prepareWebSocket(ctx context.Context, scenario bench.Scenario, i
 			"prebuilt":   true,
 		}),
 	}, nil
+}
+
+func (v *Venue) routeDefaults() submission.Defaults {
+	return submission.Defaults{
+		Method:      v.method,
+		URL:         v.url,
+		BatchURL:    v.batchURL,
+		Header:      v.headers,
+		Body:        v.body,
+		BatchBody:   v.batchBody,
+		WSURL:       v.wsURL,
+		WSBatchURL:  v.wsBatchURL,
+		WSBody:      v.wsBody,
+		WSBatchBody: v.wsBatchBody,
+	}
 }
 
 func (v *Venue) prepareConfirmation(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
@@ -312,15 +302,32 @@ func (v *Venue) build(ctx context.Context, scenario bench.Scenario, iteration in
 	if v.builder == nil {
 		return payload.Built{}, nil
 	}
-	return v.builder.Build(ctx, payload.Request{
+	req := payload.Request{
 		Venue:       v.name,
 		Transport:   v.transport,
 		Scenario:    scenario,
 		Iteration:   iteration,
 		BatchSize:   batchSize,
 		RequestedAt: time.Now().UTC(),
-		Params:      v.builderParams,
-	})
+		Params:      maps.Clone(v.builderParams),
+	}
+	var hookMetadata map[string]any
+	if v.builderHook != nil {
+		params, metadata, err := v.builderHook(ctx, req)
+		if err != nil {
+			return payload.Built{}, err
+		}
+		req.Params = params
+		hookMetadata = metadata
+	}
+	built, err := v.builder.Build(ctx, req)
+	if err != nil {
+		return payload.Built{}, err
+	}
+	if len(hookMetadata) > 0 {
+		built.Metadata = mergeMetadata(built.Metadata, hookMetadata)
+	}
+	return built, nil
 }
 
 func bodyBytes(inline string, file string) ([]byte, error) {
@@ -333,24 +340,6 @@ func bodyBytes(inline string, file string) ([]byte, error) {
 	return os.ReadFile(file)
 }
 
-func firstPointer(values ...*string) *string {
-	for _, value := range values {
-		if value != nil {
-			return value
-		}
-	}
-	return nil
-}
-
-func firstBytes(values ...[]byte) []byte {
-	for _, value := range values {
-		if len(value) > 0 {
-			return value
-		}
-	}
-	return nil
-}
-
 func httpTransportLabel(rawURL string) string {
 	parsed, err := url.Parse(rawURL)
 	if err == nil && parsed.Scheme == "https" {
@@ -359,9 +348,18 @@ func httpTransportLabel(rawURL string) string {
 	return "http"
 }
 
-func newWSClientWithHeartbeat(transport string, url string, headers http.Header, readInitial bool, heartbeat netlatency.WebSocketHeartbeat) *netlatency.WebSocketClient {
+func newWSClientWithHeartbeat(transport string, url string, headers http.Header, readInitial bool, heartbeat netlatency.WebSocketHeartbeat, observer func(valueNS int64, source string)) *netlatency.WebSocketClient {
 	if transport != "websocket" || url == "" {
 		return nil
+	}
+	if observer != nil {
+		previous := heartbeat.ObserveRTT
+		heartbeat.ObserveRTT = func(valueNS int64, source string) {
+			if previous != nil {
+				previous(valueNS, source)
+			}
+			observer(valueNS, source)
+		}
 	}
 	return netlatency.NewWebSocketClientWithHeartbeat(url, headers, readInitial, heartbeat)
 }

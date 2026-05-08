@@ -33,7 +33,7 @@ func ProfileFromParams(params map[string]any) OrderProfile {
 }
 
 func ValidateRisk(risk RiskConfig, profile OrderProfile) error {
-	if risk.RequirePostOnly && !isTrue(profile.PostOnly) && !isPostOnlyTIF(profile.TimeInForce) {
+	if risk.RequirePostOnly && !isTrue(profile.PostOnly) && !isPostOnlyTIF(profile.TimeInForce) && !isPostOnlyOrderType(profile.OrderType) {
 		return fmt.Errorf("risk.require_post_only is true but order profile is not post-only")
 	}
 	if FillLikely(profile) && !risk.AllowFill {
@@ -109,4 +109,9 @@ func isFalse(value *bool) bool {
 func isPostOnlyTIF(value string) bool {
 	normalized := strings.ToLower(value)
 	return normalized == "2" || normalized == "alo" || normalized == "gtx" || normalized == "post_only" || normalized == "postonly"
+}
+
+func isPostOnlyOrderType(value string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(value, "-", "_"))
+	return normalized == "post_only" || normalized == "postonly"
 }

@@ -75,6 +75,42 @@ func TestPrebuiltVenueUsesDynamicBuilder(t *testing.T) {
 	}
 }
 
+func TestPrebuiltVenueAppliesBuilderParamHook(t *testing.T) {
+	dynamicBody := `{"dynamic":true}`
+	builder := &captureBuilder{built: payload.Built{
+		Body:     &dynamicBody,
+		Metadata: map[string]any{"builder": "capture"},
+	}}
+	venue, err := New(Config{
+		Name:          "test",
+		URL:           "https://example.com/single",
+		Builder:       builder,
+		BuilderParams: map[string]any{"price": "75000"},
+		BuilderParamHook: func(_ context.Context, req payload.Request) (map[string]any, map[string]any, error) {
+			params := req.Params
+			params["price"] = "76000"
+			return params, map[string]any{"price_source": "book_top"}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prepared, err := venue.Prepare(context.Background(), bench.ScenarioSingle, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if builder.request.Params["price"] != "76000" {
+		t.Fatalf("builder params = %#v", builder.request.Params)
+	}
+	if prepared.Metadata["price_source"] != "book_top" {
+		t.Fatalf("metadata = %#v", prepared.Metadata)
+	}
+	if venue.builderParams["price"] != "75000" {
+		t.Fatalf("base params mutated = %#v", venue.builderParams)
+	}
+}
+
 func TestPrebuiltVenueAllowsBuilderWithoutStaticBody(t *testing.T) {
 	dynamicBody := `{"dynamic":true}`
 	venue, err := New(Config{
@@ -163,6 +199,16 @@ type staticBuilder struct {
 }
 
 func (b staticBuilder) Build(context.Context, payload.Request) (payload.Built, error) {
+	return b.built, nil
+}
+
+type captureBuilder struct {
+	built   payload.Built
+	request payload.Request
+}
+
+func (b *captureBuilder) Build(_ context.Context, req payload.Request) (payload.Built, error) {
+	b.request = req
 	return b.built, nil
 }
 

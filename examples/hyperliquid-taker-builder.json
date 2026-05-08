@@ -14,8 +14,8 @@
   },
   "http": {
     "timeout_ms": 10000,
-    "max_idle_conns": 256,
-    "max_idle_conns_per_host": 256,
+    "max_idle_conns": 16,
+    "max_idle_conns_per_host": 8,
     "disable_compression": true
   },
   "risk": {
@@ -29,7 +29,7 @@
     "timeout_ms": 15000
   },
   "request": {
-    "transport": "https",
+    "transport": "websocket",
     "builder": {
       "type": "persistent_command",
       "command": [
@@ -51,6 +51,7 @@
         "price": "75000",
         "price_from_mid": true,
         "price_offset_bps": "100",
+        "balance_source": "spot",
         "order_type": "market",
         "tif": "Ioc",
         "neutralize_slippage_bps": "100",

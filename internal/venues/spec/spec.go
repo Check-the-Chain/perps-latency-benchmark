@@ -116,9 +116,10 @@ type Definition struct {
 }
 
 type WebSocketHeartbeat struct {
-	Message   string
-	IdleAfter time.Duration
-	Timeout   time.Duration
+	Message      string
+	ControlFrame string
+	IdleAfter    time.Duration
+	Timeout      time.Duration
 }
 
 type Config struct {
@@ -157,9 +158,10 @@ func (d Definition) Build(cfg Config) (bench.Venue, error) {
 
 func (h WebSocketHeartbeat) toNetLatency() netlatency.WebSocketHeartbeat {
 	return netlatency.WebSocketHeartbeat{
-		Message:   []byte(h.Message),
-		IdleAfter: h.IdleAfter,
-		Timeout:   h.Timeout,
+		Message:      []byte(h.Message),
+		ControlFrame: h.ControlFrame,
+		IdleAfter:    h.IdleAfter,
+		Timeout:      h.Timeout,
 	}
 }
 

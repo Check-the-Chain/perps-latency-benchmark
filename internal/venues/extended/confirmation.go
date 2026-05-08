@@ -6,75 +6,58 @@ import (
 	"net/http"
 	"strings"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/confirmws"
-	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/payload"
 	"perps-latency-benchmark/internal/venues/confirmutil"
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["confirmation"].(map[string]any)
-	if !ok || confirmutil.Text(raw["venue"]) != "extended" {
-		return nil, nil
-	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	apiKey := confirmutil.Text(raw["api_key"])
-	if wsURL == "" || apiKey == "" {
-		return nil, fmt.Errorf("extended confirmation metadata missing ws_url or api_key")
-	}
-	externalIDs := confirmutil.IDSet(raw["external_ids"])
-	if len(externalIDs) == 0 {
-		return nil, fmt.Errorf("extended confirmation metadata missing external_ids")
-	}
-	headers := http.Header{}
-	headers.Set("X-Api-Key", apiKey)
-	headers.Set("User-Agent", "perps-latency-benchmark")
-	client, err := confirmws.Dial(ctx, wsURL, headers, false)
-	if err != nil {
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "confirmation",
+		Venue:    "extended",
+		IDField:  "external_ids",
+		Required: []string{"ws_url", "api_key"},
+	})
+	if !ok || err != nil {
 		return nil, err
 	}
-	orderType := confirmutil.Text(raw["order_type"])
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchExtendedConfirmation(msg, externalIDs, orderType)
-			})
+	if plan.WSURL == "" {
+		return nil, nil
+	}
+	headers := http.Header{}
+	headers.Set("X-Api-Key", plan.Text("api_key"))
+	headers.Set("User-Agent", "perps-latency-benchmark")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, headers, false)
 		},
-		Close: client.Close,
-	}, nil
+	}, func(msg map[string]any) (bool, error) {
+		return matchExtendedConfirmation(msg, plan.IDs, plan.Order)
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["cancel_confirmation"].(map[string]any)
-	if !ok || confirmutil.Text(raw["venue"]) != "extended" {
-		return nil, nil
-	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	apiKey := confirmutil.Text(raw["api_key"])
-	if wsURL == "" || apiKey == "" {
-		return nil, fmt.Errorf("extended cancel confirmation metadata missing ws_url or api_key")
-	}
-	externalIDs := confirmutil.IDSet(raw["external_ids"])
-	if len(externalIDs) == 0 {
-		return nil, fmt.Errorf("extended cancel confirmation metadata missing external_ids")
-	}
-	headers := http.Header{}
-	headers.Set("X-Api-Key", apiKey)
-	headers.Set("User-Agent", "perps-latency-benchmark")
-	client, err := confirmws.Dial(ctx, wsURL, headers, false)
-	if err != nil {
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "cancel_confirmation",
+		Venue:    "extended",
+		IDField:  "external_ids",
+		Required: []string{"ws_url", "api_key"},
+	})
+	if !ok || err != nil {
 		return nil, err
 	}
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			remaining := copyIDSet(externalIDs)
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchExtendedCancelConfirmation(msg, remaining), nil
-			})
+	headers := http.Header{}
+	headers.Set("X-Api-Key", plan.Text("api_key"))
+	headers.Set("User-Agent", "perps-latency-benchmark")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return confirmws.Dial(ctx, plan.WSURL, headers, false)
 		},
-		Close: client.Close,
-	}, nil
+	}, plan.IDs, matchExtendedCancelConfirmation)
 }
 
 func matchExtendedConfirmation(msg map[string]any, externalIDs map[string]struct{}, orderType string) (bool, error) {
@@ -109,7 +92,7 @@ func matchExtendedConfirmation(msg map[string]any, externalIDs map[string]struct
 func matchExtendedCancelConfirmation(msg map[string]any, remaining map[string]struct{}) bool {
 	data := confirmutil.Object(msg["data"])
 	for _, order := range confirmutil.ObjectList(data["orders"]) {
-		id := firstMatchingID(remaining, order["externalId"], order["external_id"])
+		id := confirmutil.FirstMatchingID(remaining, order["externalId"], order["external_id"])
 		if id == "" {
 			continue
 		}
@@ -128,22 +111,4 @@ func isExtendedTerminalFailure(status string) bool {
 	default:
 		return false
 	}
-}
-
-func copyIDSet(ids map[string]struct{}) map[string]struct{} {
-	copied := make(map[string]struct{}, len(ids))
-	for id := range ids {
-		copied[id] = struct{}{}
-	}
-	return copied
-}
-
-func firstMatchingID(ids map[string]struct{}, values ...any) string {
-	for _, value := range values {
-		id := confirmutil.Text(value)
-		if _, ok := ids[id]; ok {
-			return id
-		}
-	}
-	return ""
 }

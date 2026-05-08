@@ -3,34 +3,44 @@ package bench
 import (
 	"fmt"
 	"strings"
-
-	hdrhistogram "github.com/HdrHistogram/hdrhistogram-go"
 )
 
 type Summary struct {
-	Count           int            `json:"count"`
-	OK              int            `json:"ok"`
-	Failed          int            `json:"failed"`
-	Cleanup         CleanupSummary `json:"cleanup"`
-	MinMS           float64        `json:"min_ms"`
-	MeanMS          float64        `json:"mean_ms"`
-	P50MS           float64        `json:"p50_ms"`
-	P95MS           float64        `json:"p95_ms"`
-	P99MS           float64        `json:"p99_ms"`
-	MaxMS           float64        `json:"max_ms"`
-	RawMeanMS       float64        `json:"raw_mean_ms,omitempty"`
-	RawP50MS        float64        `json:"raw_p50_ms,omitempty"`
-	RawP95MS        float64        `json:"raw_p95_ms,omitempty"`
-	RawP99MS        float64        `json:"raw_p99_ms,omitempty"`
-	SpeedBumpMeanMS float64        `json:"speed_bump_mean_ms,omitempty"`
-	SpeedBumpSource string         `json:"speed_bump_source,omitempty"`
-	SubmissionP50MS float64        `json:"submission_p50_ms,omitempty"`
-	SubmissionP95MS float64        `json:"submission_p95_ms,omitempty"`
-	SubmissionP99MS float64        `json:"submission_p99_ms,omitempty"`
-	CleanupMeanMS   float64        `json:"cleanup_mean_ms,omitempty"`
-	CleanupP50MS    float64        `json:"cleanup_p50_ms,omitempty"`
-	CleanupP95MS    float64        `json:"cleanup_p95_ms,omitempty"`
-	CleanupP99MS    float64        `json:"cleanup_p99_ms,omitempty"`
+	Count                        int            `json:"count"`
+	OK                           int            `json:"ok"`
+	Failed                       int            `json:"failed"`
+	Cleanup                      CleanupSummary `json:"cleanup"`
+	MinMS                        float64        `json:"min_ms"`
+	MeanMS                       float64        `json:"mean_ms"`
+	P50MS                        float64        `json:"p50_ms"`
+	P95MS                        float64        `json:"p95_ms"`
+	P99MS                        float64        `json:"p99_ms"`
+	MaxMS                        float64        `json:"max_ms"`
+	RawMeanMS                    float64        `json:"raw_mean_ms,omitempty"`
+	RawP50MS                     float64        `json:"raw_p50_ms,omitempty"`
+	RawP95MS                     float64        `json:"raw_p95_ms,omitempty"`
+	RawP99MS                     float64        `json:"raw_p99_ms,omitempty"`
+	NetworkFloorMeanMS           float64        `json:"network_floor_mean_ms,omitempty"`
+	NetworkFloorP50MS            float64        `json:"network_floor_p50_ms,omitempty"`
+	NetworkFloorP95MS            float64        `json:"network_floor_p95_ms,omitempty"`
+	NetworkFloorP99MS            float64        `json:"network_floor_p99_ms,omitempty"`
+	NetworkAdjustedMeanMS        float64        `json:"network_adjusted_mean_ms,omitempty"`
+	NetworkAdjustedP50MS         float64        `json:"network_adjusted_p50_ms,omitempty"`
+	NetworkAdjustedP95MS         float64        `json:"network_adjusted_p95_ms,omitempty"`
+	NetworkAdjustedP99MS         float64        `json:"network_adjusted_p99_ms,omitempty"`
+	SpeedBumpMeanMS              float64        `json:"speed_bump_mean_ms,omitempty"`
+	SpeedBumpSource              string         `json:"speed_bump_source,omitempty"`
+	SubmissionP50MS              float64        `json:"submission_p50_ms,omitempty"`
+	SubmissionP95MS              float64        `json:"submission_p95_ms,omitempty"`
+	SubmissionP99MS              float64        `json:"submission_p99_ms,omitempty"`
+	CleanupMeanMS                float64        `json:"cleanup_mean_ms,omitempty"`
+	CleanupP50MS                 float64        `json:"cleanup_p50_ms,omitempty"`
+	CleanupP95MS                 float64        `json:"cleanup_p95_ms,omitempty"`
+	CleanupP99MS                 float64        `json:"cleanup_p99_ms,omitempty"`
+	NetworkAdjustedCleanupMeanMS float64        `json:"network_adjusted_cleanup_mean_ms,omitempty"`
+	NetworkAdjustedCleanupP50MS  float64        `json:"network_adjusted_cleanup_p50_ms,omitempty"`
+	NetworkAdjustedCleanupP95MS  float64        `json:"network_adjusted_cleanup_p95_ms,omitempty"`
+	NetworkAdjustedCleanupP99MS  float64        `json:"network_adjusted_cleanup_p99_ms,omitempty"`
 }
 
 type CleanupSummary struct {
@@ -41,15 +51,14 @@ type CleanupSummary struct {
 }
 
 func Summarize(samples []Sample) Summary {
-	hist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
-	rawHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
-	submissionHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
-	cleanupHist := hdrhistogram.New(1, 10*60*1_000_000_000, 3)
-	var totalNS int64
-	var rawTotalNS int64
+	latency := newLatencyAccumulator()
+	rawLatency := newLatencyAccumulator()
+	submissionLatency := newLatencyAccumulator()
+	cleanupLatency := newLatencyAccumulator()
+	networkFloorLatency := newLatencyAccumulator()
+	networkAdjustedLatency := newLatencyAccumulator()
+	networkAdjustedCleanupLatency := newLatencyAccumulator()
 	var speedBumpTotalNS int64
-	var cleanupTotalNS int64
-	var cleanupLatencyCount int
 	var ok int
 	var failed int
 	var cleanup CleanupSummary
@@ -58,15 +67,17 @@ func Summarize(samples []Sample) Summary {
 		if sample.Warmup {
 			continue
 		}
+		semantics := LatencyForSample(sample)
 		if sample.Cleanup != nil {
 			if sample.Cleanup.Attempted {
 				cleanup.Attempted++
 				if sample.Cleanup.OK {
 					cleanup.OK++
-					if cancelNS, ok := CancelLatencyNS(sample); ok {
-						_ = cleanupHist.RecordValue(cancelNS)
-						cleanupTotalNS += cancelNS
-						cleanupLatencyCount++
+					if semantics.HasCancel {
+						cleanupLatency.record(semantics.CancelNS)
+						if semantics.HasNetworkFloor {
+							networkAdjustedCleanupLatency.record(semantics.NetworkAdjustedCleanupNS)
+						}
 					}
 				} else {
 					cleanup.Failed++
@@ -79,56 +90,64 @@ func Summarize(samples []Sample) Summary {
 			failed++
 			continue
 		}
-		value := adjustedNetworkNS(sample)
-		if value < 1 {
-			value = 1
+		latency.record(semantics.ConfirmationNS)
+		rawLatency.record(semantics.RawNetworkNS)
+		if semantics.HasNetworkFloor {
+			networkFloorLatency.record(semantics.NetworkFloorNS)
+			networkAdjustedLatency.record(semantics.NetworkAdjustedNS)
 		}
-		_ = hist.RecordValue(value)
-		rawValue := rawNetworkNS(sample)
-		if rawValue < 1 {
-			rawValue = 1
-		}
-		_ = rawHist.RecordValue(rawValue)
 		if sample.SubmissionNS > 0 {
-			submissionNS := sample.SubmissionNS
-			if submissionNS < 1 {
-				submissionNS = 1
-			}
-			_ = submissionHist.RecordValue(submissionNS)
+			submissionLatency.record(sample.SubmissionNS)
 		}
-		totalNS += value
-		rawTotalNS += rawValue
-		speedBumpTotalNS += SpeedBumpNS(sample)
+		speedBumpTotalNS += semantics.SpeedBumpNS
 		ok++
 	}
 
 	summary := Summary{Count: ok + failed, OK: ok, Failed: failed, Cleanup: cleanup}
-	if cleanupLatencyCount > 0 {
-		summary.CleanupMeanMS = nsToMS(cleanupTotalNS / int64(cleanupLatencyCount))
-		summary.CleanupP50MS = nsToMS(cleanupHist.ValueAtQuantile(50))
-		summary.CleanupP95MS = nsToMS(cleanupHist.ValueAtQuantile(95))
-		summary.CleanupP99MS = nsToMS(cleanupHist.ValueAtQuantile(99))
+	if cleanupLatency.recorded() {
+		summary.CleanupMeanMS = cleanupLatency.meanMS()
+		summary.CleanupP50MS = cleanupLatency.p50MS()
+		summary.CleanupP95MS = cleanupLatency.p95MS()
+		summary.CleanupP99MS = cleanupLatency.p99MS()
+	}
+	if networkAdjustedCleanupLatency.recorded() {
+		summary.NetworkAdjustedCleanupMeanMS = networkAdjustedCleanupLatency.meanMS()
+		summary.NetworkAdjustedCleanupP50MS = networkAdjustedCleanupLatency.p50MS()
+		summary.NetworkAdjustedCleanupP95MS = networkAdjustedCleanupLatency.p95MS()
+		summary.NetworkAdjustedCleanupP99MS = networkAdjustedCleanupLatency.p99MS()
 	}
 	if ok == 0 {
 		return summary
 	}
 
-	summary.MinMS = nsToMS(hist.Min())
-	summary.MeanMS = nsToMS(totalNS / int64(ok))
-	summary.P50MS = nsToMS(hist.ValueAtQuantile(50))
-	summary.P95MS = nsToMS(hist.ValueAtQuantile(95))
-	summary.P99MS = nsToMS(hist.ValueAtQuantile(99))
-	summary.MaxMS = nsToMS(hist.Max())
-	summary.RawMeanMS = nsToMS(rawTotalNS / int64(ok))
-	summary.RawP50MS = nsToMS(rawHist.ValueAtQuantile(50))
-	summary.RawP95MS = nsToMS(rawHist.ValueAtQuantile(95))
-	summary.RawP99MS = nsToMS(rawHist.ValueAtQuantile(99))
+	summary.MinMS = latency.minMS()
+	summary.MeanMS = latency.meanMS()
+	summary.P50MS = latency.p50MS()
+	summary.P95MS = latency.p95MS()
+	summary.P99MS = latency.p99MS()
+	summary.MaxMS = latency.maxMS()
+	summary.RawMeanMS = rawLatency.meanMS()
+	summary.RawP50MS = rawLatency.p50MS()
+	summary.RawP95MS = rawLatency.p95MS()
+	summary.RawP99MS = rawLatency.p99MS()
+	if networkFloorLatency.recorded() {
+		summary.NetworkFloorMeanMS = networkFloorLatency.meanMS()
+		summary.NetworkFloorP50MS = networkFloorLatency.p50MS()
+		summary.NetworkFloorP95MS = networkFloorLatency.p95MS()
+		summary.NetworkFloorP99MS = networkFloorLatency.p99MS()
+	}
+	if networkAdjustedLatency.recorded() {
+		summary.NetworkAdjustedMeanMS = networkAdjustedLatency.meanMS()
+		summary.NetworkAdjustedP50MS = networkAdjustedLatency.p50MS()
+		summary.NetworkAdjustedP95MS = networkAdjustedLatency.p95MS()
+		summary.NetworkAdjustedP99MS = networkAdjustedLatency.p99MS()
+	}
 	summary.SpeedBumpMeanMS = nsToMS(speedBumpTotalNS / int64(ok))
 	summary.SpeedBumpSource = speedBumpSource(samples)
-	if submissionHist.TotalCount() > 0 {
-		summary.SubmissionP50MS = nsToMS(submissionHist.ValueAtQuantile(50))
-		summary.SubmissionP95MS = nsToMS(submissionHist.ValueAtQuantile(95))
-		summary.SubmissionP99MS = nsToMS(submissionHist.ValueAtQuantile(99))
+	if submissionLatency.recorded() {
+		summary.SubmissionP50MS = submissionLatency.p50MS()
+		summary.SubmissionP95MS = submissionLatency.p95MS()
+		summary.SubmissionP99MS = submissionLatency.p99MS()
 	}
 	return summary
 }

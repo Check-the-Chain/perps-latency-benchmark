@@ -23,7 +23,7 @@ func ParseOrderMetadata(metadata map[string]any) OrderMetadata {
 	speedBumpNS, speedBumpSource := speedBumpFromMetadata(metadata)
 	return OrderMetadata{
 		OrderType:        orderType(metadata),
-		CleanupOrderRefs: OrderRefsFromMetadata(metadata, MetadataCleanupOrdersKey),
+		CleanupOrderRefs: CleanupOrderRefContract("").FromMetadata(metadata),
 		SpeedBumpNS:      speedBumpNS,
 		SpeedBumpSource:  speedBumpSource,
 		Debug:            DebugMetadata(metadata),

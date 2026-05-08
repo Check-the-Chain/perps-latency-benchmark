@@ -39,6 +39,8 @@ type Level struct {
 	Size  float64 `json:"size"`
 }
 
+const maxSnapshotLevels = 15
+
 func (s Snapshot) Age(at time.Time) time.Duration {
 	if s.ReceivedAt.IsZero() || at.IsZero() {
 		return 0
@@ -127,7 +129,18 @@ func (t *Tracker) runOnce(ctx context.Context) error {
 	t.mu.Lock()
 	t.conn = conn
 	t.mu.Unlock()
-	defer t.close()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
+	defer func() {
+		close(done)
+		t.close()
+	}()
 
 	if msg := t.parser.Subscribe(t.cfg); len(msg) > 0 {
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
@@ -198,6 +211,10 @@ func NewExtendedParser() Parser {
 	return &extendedParser{}
 }
 
+func NewPacificaParser() Parser {
+	return pacificaParser{}
+}
+
 type genericParser struct{}
 
 func (genericParser) Subscribe(Config) []byte {
@@ -244,6 +261,8 @@ func (p *lighterParser) Parse(data []byte) (Snapshot, bool) {
 	}
 	applyExtendedLevels(p.bids, findAny(body, "bids", "bid", "b"), false)
 	applyExtendedLevels(p.asks, findAny(body, "asks", "ask", "a"), false)
+	trimBook(p.bids, true, maxSnapshotLevels)
+	trimBook(p.asks, false, maxSnapshotLevels)
 	bid, bidSize := bestBid(p.bids)
 	ask, askSize := bestAsk(p.asks)
 	if bid <= 0 || ask <= 0 {
@@ -284,6 +303,9 @@ func parseBookData(data []byte, parse func(any) Snapshot) (Snapshot, bool) {
 
 func parseHyperliquid(value any) Snapshot {
 	data := findMap(value, "data")
+	if len(data) == 0 {
+		data = confirmMap(value)
+	}
 	levels, _ := data["levels"].([]any)
 	if len(levels) < 2 {
 		return Snapshot{}
@@ -301,6 +323,42 @@ func parseAster(value any) Snapshot {
 	bids := parseLevels(root["b"], true)
 	asks := parseLevels(root["a"], false)
 	return snapshotFromLevels(bids, asks, unixMillis(root["E"]))
+}
+
+type pacificaParser struct{}
+
+func (pacificaParser) Subscribe(cfg Config) []byte {
+	return []byte(fmt.Sprintf(`{"method":"subscribe","params":{"source":"bbo","symbol":%q}}`, cfg.Symbol))
+}
+
+func (pacificaParser) Parse(data []byte) (Snapshot, bool) {
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return Snapshot{}, false
+	}
+	if channel := text(root["channel"]); channel != "" && channel != "bbo" {
+		return Snapshot{}, false
+	}
+	body := confirmMap(root["data"])
+	if len(body) == 0 {
+		body = root
+	}
+	bid := number(body["b"])
+	bidSize := number(body["B"])
+	ask := number(body["a"])
+	askSize := number(body["A"])
+	if bid <= 0 || ask <= 0 {
+		return Snapshot{}, false
+	}
+	return Snapshot{
+		Bid:        bid,
+		BidSize:    bidSize,
+		Ask:        ask,
+		AskSize:    askSize,
+		Bids:       []Level{{Price: bid, Size: bidSize}},
+		Asks:       []Level{{Price: ask, Size: askSize}},
+		ExchangeAt: unixMillis(body["t"]),
+	}, true
 }
 
 type extendedParser struct {
@@ -347,6 +405,8 @@ func (p *extendedParser) Parse(data []byte) (Snapshot, bool) {
 		}
 		return snapshot, true
 	}
+	trimBook(p.bids, true, maxSnapshotLevels)
+	trimBook(p.asks, false, maxSnapshotLevels)
 	bid, bidSize := bestBid(p.bids)
 	ask, askSize := bestAsk(p.asks)
 	if bid <= 0 || ask <= 0 {
@@ -424,6 +484,8 @@ func snapshotFromLevels(bids []Level, asks []Level, exchangeAt time.Time) Snapsh
 	if len(bids) == 0 || len(asks) == 0 {
 		return Snapshot{}
 	}
+	bids = limitLevels(bids, maxSnapshotLevels)
+	asks = limitLevels(asks, maxSnapshotLevels)
 	return Snapshot{
 		Bid:        bids[0].Price,
 		BidSize:    bids[0].Size,
@@ -449,10 +511,14 @@ func parseLevels(value any, bids bool) []Level {
 		levels = append(levels, Level{Price: price, Size: size})
 	}
 	sortLevels(levels, bids)
-	return levels
+	return limitLevels(levels, maxSnapshotLevels)
 }
 
 func sortedBookLevels(book map[float64]float64, bids bool) []Level {
+	return limitLevels(sortedBookLevelsAll(book, bids), maxSnapshotLevels)
+}
+
+func sortedBookLevelsAll(book map[float64]float64, bids bool) []Level {
 	levels := make([]Level, 0, len(book))
 	for price, size := range book {
 		if price <= 0 || size <= 0 {
@@ -471,6 +537,22 @@ func sortLevels(levels []Level, bids bool) {
 		}
 		return levels[i].Price < levels[j].Price
 	})
+}
+
+func limitLevels(levels []Level, max int) []Level {
+	if max <= 0 || len(levels) <= max {
+		return levels
+	}
+	return levels[:max]
+}
+
+func trimBook(book map[float64]float64, bids bool, max int) {
+	if max <= 0 || len(book) <= max {
+		return
+	}
+	for _, level := range sortedBookLevelsAll(book, bids)[max:] {
+		delete(book, level.Price)
+	}
 }
 
 func parseLevel(value any) (float64, float64) {

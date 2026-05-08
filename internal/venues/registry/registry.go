@@ -11,6 +11,8 @@ import (
 	"perps-latency-benchmark/internal/venues/grvt"
 	"perps-latency-benchmark/internal/venues/hyperliquid"
 	"perps-latency-benchmark/internal/venues/lighter"
+	"perps-latency-benchmark/internal/venues/nado"
+	"perps-latency-benchmark/internal/venues/pacifica"
 	"perps-latency-benchmark/internal/venues/spec"
 	"perps-latency-benchmark/internal/venues/variational_omni"
 )
@@ -23,6 +25,8 @@ var definitions = []spec.Definition{
 	hyperliquid.Definition(),
 	lighter.Definition(),
 	lighterFreeDefinition(),
+	nado.Definition(),
+	pacifica.Definition(),
 	variational_omni.Definition(),
 }
 

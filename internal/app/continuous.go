@@ -35,15 +35,20 @@ func newRunContinuousCommand() *cobra.Command {
 }
 
 func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOptions) error {
-	cfg, err := loadFileConfig(opts.configPath)
+	plan, err := prepareRunPlan(ctx, runPlanOptions{
+		ConfigPath:         opts.configPath,
+		FallbackVenue:      "mock",
+		ConfirmLive:        opts.confirmLive,
+		AllowInlineSecrets: opts.allowInlineSecrets,
+		ApplyOverrides: func(cfg *fileConfig) {
+			applyFlagOverrides(cmd, &opts.runOptions, cfg)
+		},
+	})
 	if err != nil {
 		return err
 	}
-	applyFlagOverrides(cmd, &opts.runOptions, &cfg)
-	normalizeFileConfig(&cfg)
-	if err := prepareRuntimeEnvironment(cfg, &opts.runOptions); err != nil {
-		return err
-	}
+	cfg := plan.Config
+	venueName := plan.VenueName
 	if opts.chunkIterations <= 0 {
 		return fmt.Errorf("chunk-iterations must be positive")
 	}
@@ -51,22 +56,6 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 		return fmt.Errorf("run-continuous requires --rate or benchmark.rate_per_second")
 	}
 
-	venueName := normalizedVenue(cfg.Venue, "mock")
-	if venueName != "mock" && !opts.confirmLive {
-		return fmt.Errorf("refusing to run live venue %q without --confirm-live", venueName)
-	}
-	if err := validateRunConfig(venueName, cfg); err != nil {
-		return err
-	}
-	if err := validateLifecycleForRun(venueName, cfg); err != nil {
-		return err
-	}
-	if err := validateCleanupForRun(venueName, cfg); err != nil {
-		return err
-	}
-	if err := checkAccountsForRun(venueName, cfg); err != nil {
-		return err
-	}
 	lock, err := acquireRunLock(venueName, cfg)
 	if err != nil {
 		return err

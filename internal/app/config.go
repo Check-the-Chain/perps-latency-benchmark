@@ -59,8 +59,8 @@ type rateLimitConfig struct {
 	MinRemaining     int  `json:"min_remaining"`
 	ReserveWhenBelow bool `json:"reserve_when_below"`
 	ReserveTarget    int  `json:"reserve_target"`
-	MaxReserveWeight  int  `json:"max_reserve_weight"`
-	TimeoutMS         int  `json:"timeout_ms"`
+	MaxReserveWeight int  `json:"max_reserve_weight"`
+	TimeoutMS        int  `json:"timeout_ms"`
 }
 
 type mockConfig struct {

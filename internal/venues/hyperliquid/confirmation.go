@@ -7,101 +7,74 @@ import (
 	"strings"
 	"time"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/confirmws"
-	"perps-latency-benchmark/internal/netlatency"
 	"perps-latency-benchmark/internal/payload"
 	"perps-latency-benchmark/internal/venues/confirmutil"
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["confirmation"].(map[string]any)
-	if !ok || raw["venue"] != "hyperliquid" {
-		return nil, nil
-	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	user := confirmutil.Text(raw["user"])
-	if wsURL == "" || user == "" {
-		return nil, fmt.Errorf("hyperliquid confirmation metadata missing ws_url or user")
-	}
-	cloids := confirmutil.IDSet(raw["cloids"])
-	if len(cloids) == 0 {
-		return nil, fmt.Errorf("hyperliquid confirmation metadata missing cloids")
-	}
-	client, err := confirmws.Dial(ctx, wsURL, http.Header{}, false)
-	if err != nil {
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "confirmation",
+		Venue:    "hyperliquid",
+		IDField:  "cloids",
+		Required: []string{"ws_url", "user"},
+	})
+	if !ok || err != nil {
 		return nil, err
 	}
-	cleanup := func() error { return client.Close() }
-	subscribeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err := client.WriteJSON(subscribeCtx, map[string]any{
-		"method":       "subscribe",
-		"subscription": map[string]any{"type": "orderUpdates", "user": user},
-	}); err != nil {
-		_ = cleanup()
-		return nil, err
-	}
-	if err := client.DrainUntil(subscribeCtx, func(msg map[string]any) bool {
-		return confirmutil.Text(msg["channel"]) == "subscriptionResponse"
-	}); err != nil {
-		_ = cleanup()
-		return nil, err
-	}
-	orderType := confirmutil.Text(raw["order_type"])
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchHyperliquidConfirmation(msg, cloids, orderType)
-			})
+	user := plan.Text("user")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("hyperliquid", plan.WSURL, user))
+	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialOrderUpdates(ctx, plan.WSURL, user)
 		},
-		Close: cleanup,
-	}, nil
+	}, func(msg map[string]any) (bool, error) {
+		return matchHyperliquidConfirmation(msg, plan.IDs, plan.Order)
+	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	raw, ok := built.Metadata["cancel_confirmation"].(map[string]any)
-	if !ok || raw["venue"] != "hyperliquid" {
-		return nil, nil
+	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+		Key:      "cancel_confirmation",
+		Venue:    "hyperliquid",
+		IDField:  "cloids",
+		Required: []string{"ws_url", "user"},
+	})
+	if !ok || err != nil {
+		return nil, err
 	}
-	wsURL := confirmutil.Text(raw["ws_url"])
-	user := confirmutil.Text(raw["user"])
-	if wsURL == "" || user == "" {
-		return nil, fmt.Errorf("hyperliquid cancel confirmation metadata missing ws_url or user")
-	}
-	cloids := confirmutil.IDSet(raw["cloids"])
-	if len(cloids) == 0 {
-		return nil, fmt.Errorf("hyperliquid cancel confirmation metadata missing cloids")
-	}
+	user := plan.Text("user")
+	feed := accountfeed.SharedFeed(accountfeed.FeedKey("hyperliquid", plan.WSURL, user))
+	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
+		Dial: func(ctx context.Context) (*confirmws.Client, error) {
+			return dialOrderUpdates(ctx, plan.WSURL, user)
+		},
+	}, plan.IDs, matchHyperliquidCancelConfirmation)
+}
+
+func dialOrderUpdates(ctx context.Context, wsURL string, user string) (*confirmws.Client, error) {
 	client, err := confirmws.Dial(ctx, wsURL, http.Header{}, false)
 	if err != nil {
 		return nil, err
 	}
-	cleanup := func() error { return client.Close() }
 	subscribeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := client.WriteJSON(subscribeCtx, map[string]any{
 		"method":       "subscribe",
 		"subscription": map[string]any{"type": "orderUpdates", "user": user},
 	}); err != nil {
-		_ = cleanup()
+		_ = client.Close()
 		return nil, err
 	}
 	if err := client.DrainUntil(subscribeCtx, func(msg map[string]any) bool {
 		return confirmutil.Text(msg["channel"]) == "subscriptionResponse"
 	}); err != nil {
-		_ = cleanup()
+		_ = client.Close()
 		return nil, err
 	}
-	return &bench.Confirmation{
-		Wait: func(ctx context.Context, submission netlatency.Result) (netlatency.Result, error) {
-			remaining := copyIDSet(cloids)
-			return client.Wait(ctx, confirmutil.Start(submission.Trace), func(msg map[string]any) (bool, error) {
-				return matchHyperliquidCancelConfirmation(msg, remaining), nil
-			})
-		},
-		Close: cleanup,
-	}, nil
+	return client, nil
 }
 
 func matchHyperliquidConfirmation(msg map[string]any, cloids map[string]struct{}, orderType string) (bool, error) {
@@ -140,7 +113,7 @@ func matchHyperliquidCancelConfirmation(msg map[string]any, remaining map[string
 		if !ok {
 			continue
 		}
-		id := firstMatchingID(remaining, order["cloid"])
+		id := confirmutil.FirstMatchingID(remaining, order["cloid"])
 		if id == "" {
 			continue
 		}
@@ -159,22 +132,4 @@ func isHyperliquidTerminalFailure(status string) bool {
 	default:
 		return false
 	}
-}
-
-func copyIDSet(ids map[string]struct{}) map[string]struct{} {
-	copied := make(map[string]struct{}, len(ids))
-	for id := range ids {
-		copied[id] = struct{}{}
-	}
-	return copied
-}
-
-func firstMatchingID(ids map[string]struct{}, values ...any) string {
-	for _, value := range values {
-		id := confirmutil.Text(value)
-		if _, ok := ids[id]; ok {
-			return id
-		}
-	}
-	return ""
 }

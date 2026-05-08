@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,34 @@ import (
 
 	"perps-latency-benchmark/internal/lifecycle"
 )
+
+func TestWebSocketCapableLiveExamplesPreferWebSocketSubmission(t *testing.T) {
+	for _, path := range []string{
+		"examples/hyperliquid-builder.json",
+		"examples/hyperliquid-batch5-builder.json",
+		"examples/hyperliquid-taker-builder.json",
+		"examples/lighter-builder.json",
+		"examples/lighter-batch5-builder.json",
+		"examples/lighter-market-builder.json",
+		"examples/lighter-free-market-builder.json",
+	} {
+		data, err := os.ReadFile(filepath.Join("..", "..", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg struct {
+			Request struct {
+				Transport string `json:"transport"`
+			} `json:"request"`
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if cfg.Request.Transport != "websocket" {
+			t.Fatalf("%s transport = %q, want websocket", path, cfg.Request.Transport)
+		}
+	}
+}
 
 func TestRunMockCommand(t *testing.T) {
 	var stdout bytes.Buffer

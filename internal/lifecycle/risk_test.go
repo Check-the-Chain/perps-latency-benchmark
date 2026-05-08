@@ -67,3 +67,12 @@ func TestValidateRiskAcceptsAsterGTXPostOnly(t *testing.T) {
 		t.Fatalf("GTX post-only profile rejected: %v", err)
 	}
 }
+
+func TestValidateRiskAcceptsPostOnlyOrderType(t *testing.T) {
+	profile := ProfileFromParams(map[string]any{
+		"order_type": "post_only",
+	})
+	if err := ValidateRisk(RiskConfig{RequirePostOnly: true}, profile); err != nil {
+		t.Fatalf("post-only order type rejected: %v", err)
+	}
+}

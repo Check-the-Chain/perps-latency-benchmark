@@ -1,6 +1,16 @@
 package booktop
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
 
 func TestVenueParsersParseTopOfBook(t *testing.T) {
 	tests := []struct {
@@ -16,6 +26,15 @@ func TestVenueParsersParseTopOfBook(t *testing.T) {
 			name:  "hyperliquid",
 			venue: "hyperliquid",
 			data:  `{"channel":"l2Book","data":{"time":1777966248747,"levels":[[{"px":"100","sz":"5"},{"px":"99","sz":"2"}],[{"px":"101","sz":"3"},{"px":"102","sz":"4"}]]}}`,
+			bid:   100,
+			ask:   101,
+			bids:  2,
+			asks:  2,
+		},
+		{
+			name:  "hyperliquid-http-l2book",
+			venue: "hyperliquid",
+			data:  `{"coin":"BTC","time":1777966248747,"levels":[[{"px":"100","sz":"5"},{"px":"99","sz":"2"}],[{"px":"101","sz":"3"},{"px":"102","sz":"4"}]]}`,
 			bid:   100,
 			ask:   101,
 			bids:  2,
@@ -39,6 +58,15 @@ func TestVenueParsersParseTopOfBook(t *testing.T) {
 			bids:  2,
 			asks:  2,
 		},
+		{
+			name:  "pacifica",
+			venue: "pacifica",
+			data:  `{"channel":"bbo","data":{"s":"BTC","t":1777966248747,"b":"100","B":"5","a":"101","A":"3"}}`,
+			bid:   100,
+			ask:   101,
+			bids:  1,
+			asks:  1,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -46,6 +74,7 @@ func TestVenueParsersParseTopOfBook(t *testing.T) {
 				"hyperliquid": NewHyperliquidParser(),
 				"aster":       NewAsterParser(),
 				"lighter":     NewLighterParser(),
+				"pacifica":    NewPacificaParser(),
 			}[test.venue]
 			snapshot, ok := parser.Parse([]byte(test.data))
 			if !ok {
@@ -132,5 +161,92 @@ func TestLighterOrderBookAppliesDeltas(t *testing.T) {
 	}
 	if len(snapshot.Bids) != 2 || len(snapshot.Asks) != 2 {
 		t.Fatalf("snapshot depth after delta = %+v", snapshot)
+	}
+}
+
+func TestSnapshotsAreCappedToTopLevels(t *testing.T) {
+	parser := NewLighterParser()
+	var bids []string
+	var asks []string
+	for i := 0; i < 25; i++ {
+		bids = append(bids, fmt.Sprintf(`{"price":"%d","size":"1"}`, 100-i))
+		asks = append(asks, fmt.Sprintf(`{"price":"%d","size":"1"}`, 101+i))
+	}
+	snapshot, ok := parser.Parse([]byte(fmt.Sprintf(`{
+		"type":"subscribed/order_book",
+		"order_book":{"bids":[%s],"asks":[%s]}
+	}`, strings.Join(bids, ","), strings.Join(asks, ","))))
+	if !ok {
+		t.Fatal("expected snapshot")
+	}
+	if len(snapshot.Bids) != maxSnapshotLevels || len(snapshot.Asks) != maxSnapshotLevels {
+		t.Fatalf("snapshot depth = bids %d asks %d", len(snapshot.Bids), len(snapshot.Asks))
+	}
+	if snapshot.Bids[0].Price != 100 || snapshot.Bids[len(snapshot.Bids)-1].Price != 86 {
+		t.Fatalf("unexpected capped bids: %+v", snapshot.Bids)
+	}
+	if snapshot.Asks[0].Price != 101 || snapshot.Asks[len(snapshot.Asks)-1].Price != 115 {
+		t.Fatalf("unexpected capped asks: %+v", snapshot.Asks)
+	}
+
+	snapshot, ok = parser.Parse([]byte(`{
+		"type":"update/order_book",
+		"order_book":{
+			"bids":[{"price":"50","size":"1"}],
+			"asks":[{"price":"200","size":"1"}]
+		}
+	}`))
+	if !ok {
+		t.Fatal("expected delta snapshot")
+	}
+	if len(snapshot.Bids) != maxSnapshotLevels || len(snapshot.Asks) != maxSnapshotLevels {
+		t.Fatalf("delta snapshot depth = bids %d asks %d", len(snapshot.Bids), len(snapshot.Asks))
+	}
+	if snapshot.Bids[len(snapshot.Bids)-1].Price == 50 || snapshot.Asks[len(snapshot.Asks)-1].Price == 200 {
+		t.Fatalf("retained levels outside top %d: %+v %+v", maxSnapshotLevels, snapshot.Bids, snapshot.Asks)
+	}
+}
+
+func TestTrackerRunClosesConnectionOnContextCancel(t *testing.T) {
+	connected := make(chan struct{})
+	closed := make(chan struct{})
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade: %v", err)
+			return
+		}
+		defer conn.Close()
+		close(connected)
+		_, _, _ = conn.ReadMessage()
+		close(closed)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tracker := NewTracker(Config{URL: "ws" + strings.TrimPrefix(server.URL, "http")})
+	done := make(chan struct{})
+	go func() {
+		tracker.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-connected:
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not connect")
+	}
+
+	cancel()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not close websocket on cancellation")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not stop after cancellation")
 	}
 }

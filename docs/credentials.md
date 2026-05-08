@@ -13,6 +13,8 @@ Recommended layout:
 - `.env.edgex.local`: edgeX credentials.
 - `.env.extended.local`: Extended credentials.
 - `.env.variational.local`: Variational credentials.
+- `.env.pacifica.local`: Pacifica credentials.
+- `.env.nado.local`: Nado credentials.
 
 The matching `.env.*.example` files are committed as templates. Local dotenv
 files are ignored by git.
@@ -181,6 +183,26 @@ reconciliation all use the same Stark key/API key material. Funding is not
 needed for local payload-building tests, but a funded account is needed for
 proper live submit, confirmation, cleanup, and neutralization tests.
 
+Pacifica:
+
+```bash
+PACIFICA_PRIVATE_KEY=
+PACIFICA_ACCOUNT=
+PACIFICA_AGENT_WALLET=
+```
+
+Pacifica order submission is websocket-first. The default builder uses
+`wss://ws.pacifica.fi/ws`, Ed25519 signing, and `tif=ALO` to avoid Pacifica's
+documented latency protection delay for GTC/IOC orders. Prefer a Pacifica API
+Agent Key for benchmarks: set `PACIFICA_PRIVATE_KEY` to the agent private key,
+`PACIFICA_ACCOUNT` to the original/main account, and optionally
+`PACIFICA_AGENT_WALLET` to the agent wallet public key. If `PACIFICA_ACCOUNT`
+differs from the signing key's public key and `PACIFICA_AGENT_WALLET` is empty,
+the builder sends the signing public key as `agent_wallet`. Funding is not
+needed for local payload-building tests, but a funded Pacifica account and a
+bound agent wallet are needed for live submit, private WebSocket confirmation,
+and cleanup tests.
+
 Variational:
 
 ```bash
@@ -211,3 +233,20 @@ from credentials:
 These values are not secrets, but they should be refreshed before serious live
 benchmarking so payload construction does not fetch metadata inside the timed
 path.
+
+Nado:
+
+```bash
+NADO_PRIVATE_KEY=
+NADO_ADDRESS=
+NADO_CHAIN_ID=57073
+NADO_ENDPOINT_CONTRACT=
+```
+
+Nado order submission uses Gateway websocket executes at
+`wss://gateway.prod.nado.xyz/v1/ws`. The default builder signs EIP-712
+`place_order` payloads locally and uses `POST_ONLY` orders with a 50 ms nonce
+discard window. `NADO_ADDRESS` is optional because it is derived from
+`NADO_PRIVATE_KEY`; set it only as a guardrail. `NADO_ENDPOINT_CONTRACT` is
+only needed when enabling authenticated subscription confirmation or cleanup. A
+funded Nado subaccount is needed for live submit tests.
