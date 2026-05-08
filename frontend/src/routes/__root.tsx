@@ -8,8 +8,8 @@ import type { QueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { AppShell } from "@/components/layout/app-shell"
-import { ThemeProvider, ThemeScript } from "@/components/theme-provider"
-import "../styles.css"
+import { ThemeProvider } from "@/components/theme-provider"
+import appCss from "../styles.css?url"
 
 export interface RouterContext {
   queryClient: QueryClient
@@ -28,7 +28,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         content: "Live network latency benchmark dashboard for perps venues.",
       },
     ],
-    links: [{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+    ],
   }),
   component: RootComponent,
   notFoundComponent: NotFound,
@@ -48,11 +51,12 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <ThemeScript />
         <HeadContent />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider defaultTheme="system" storageKey="theme">
+          {children}
+        </ThemeProvider>
         <Scripts />
       </body>
     </html>

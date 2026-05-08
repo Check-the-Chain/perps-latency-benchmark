@@ -6,8 +6,15 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { ScriptOnce } from "@tanstack/react-router"
 
 export type Theme = "dark" | "light" | "system"
+
+type ThemeProviderProps = {
+  children: ReactNode
+  defaultTheme?: Theme
+  storageKey?: string
+}
 
 type ThemeProviderState = {
   resolvedTheme: "dark" | "light"
@@ -15,75 +22,95 @@ type ThemeProviderState = {
   theme: Theme
 }
 
-const STORAGE_KEY = "perps-bench-theme"
-const DEFAULT_THEME: Theme = "system"
-const ThemeProviderContext = createContext<ThemeProviderState | null>(null)
+const ThemeProviderContext = createContext<ThemeProviderState>({
+  resolvedTheme: "light",
+  theme: "system",
+  setTheme: () => {},
+})
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME)
+function resolveTheme(theme: Theme) {
+  return theme === "system"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light"
+    : theme
+}
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement
+  const resolved = resolveTheme(theme)
+
+  root.classList.remove("light", "dark")
+  root.classList.add(resolved)
+  root.style.colorScheme = resolved
+
+  return resolved
+}
+
+export function ThemeProvider({
+  children,
+  defaultTheme = "system",
+  storageKey = "theme",
+}: ThemeProviderProps) {
+  const [theme, setThemeState] = useState<Theme>(defaultTheme)
   const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("light")
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setThemeState(storedTheme() ?? DEFAULT_THEME)
-  }, [])
+    setThemeState(storedTheme(storageKey) ?? defaultTheme)
+    setMounted(true)
+  }, [defaultTheme, storageKey])
 
   useEffect(() => {
+    if (!mounted) return
+
+    setResolvedTheme(applyTheme(theme))
+  }, [mounted, theme])
+
+  useEffect(() => {
+    if (!mounted || theme !== "system") return
+
     const media = window.matchMedia("(prefers-color-scheme: dark)")
+    const onChange = () => setResolvedTheme(applyTheme("system"))
 
-    const apply = () => {
-      const nextResolved =
-        theme === "system" ? (media.matches ? "dark" : "light") : theme
-      document.documentElement.classList.toggle("dark", nextResolved === "dark")
-      document.documentElement.style.colorScheme = nextResolved
-      setResolvedTheme(nextResolved)
-    }
-
-    apply()
-    media.addEventListener("change", apply)
-    return () => media.removeEventListener("change", apply)
-  }, [theme])
+    media.addEventListener("change", onChange)
+    return () => media.removeEventListener("change", onChange)
+  }, [mounted, theme])
 
   const value = useMemo<ThemeProviderState>(
     () => ({
       resolvedTheme,
       setTheme: (nextTheme) => {
-        localStorage.setItem(STORAGE_KEY, nextTheme)
+        localStorage.setItem(storageKey, nextTheme)
         setThemeState(nextTheme)
       },
       theme,
     }),
-    [resolvedTheme, theme]
+    [resolvedTheme, storageKey, theme]
   )
 
   return (
     <ThemeProviderContext.Provider value={value}>
+      <ScriptOnce>{getThemeScript(storageKey, defaultTheme)}</ScriptOnce>
       {children}
     </ThemeProviderContext.Provider>
   )
 }
 
-export function ThemeScript() {
-  return (
-    <script
-      suppressHydrationWarning
-      dangerouslySetInnerHTML={{
-        __html: `try{const stored=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});const theme=stored==="dark"||stored==="light"||stored==="system"?stored:${JSON.stringify(DEFAULT_THEME)};const resolved=theme==="system"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):theme;document.documentElement.classList.toggle("dark",resolved==="dark");document.documentElement.style.colorScheme=resolved}catch{document.documentElement.classList.remove("dark");document.documentElement.style.colorScheme="light"}`,
-      }}
-    />
-  )
-}
-
 export function useTheme() {
   const context = useContext(ThemeProviderContext)
-  if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider")
-  }
   return context
 }
 
-function storedTheme(): Theme | null {
-  const value = localStorage.getItem(STORAGE_KEY)
+function storedTheme(storageKey: string): Theme | null {
+  const value = localStorage.getItem(storageKey)
   return value === "dark" || value === "light" || value === "system"
     ? value
     : null
+}
+
+function getThemeScript(storageKey: string, defaultTheme: Theme) {
+  const key = JSON.stringify(storageKey)
+  const fallback = JSON.stringify(defaultTheme)
+  return `(function(){try{var t=localStorage.getItem(${key});if(t!=='light'&&t!=='dark'&&t!=='system'){t=${fallback}}var d=matchMedia('(prefers-color-scheme: dark)').matches;var r=t==='system'?(d?'dark':'light'):t;var e=document.documentElement;e.classList.add(r);e.style.colorScheme=r}catch(e){}})();`
 }

@@ -88,22 +88,12 @@ export function TakerCostPanel({
   if (isLoading) {
     return (
       <section
-        className="rounded-sm border border-border/80 bg-surface-1 p-3 text-[11px] text-muted-foreground"
+        className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-sm border border-border/80 bg-surface-1 p-3 text-[11px] text-muted-foreground"
         aria-label="Loading taker cost data"
         role="status"
       >
-        <div className="mb-3 flex items-center justify-between">
-          <span>Loading taker cost data</span>
-          <span>Fetching latest fills</span>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-16 animate-pulse rounded-sm border border-border/60 bg-surface-2/50"
-            />
-          ))}
-        </div>
+        <div className="size-5 animate-spin rounded-full border-2 border-border border-t-primary" />
+        <span>Loading taker cost data</span>
       </section>
     )
   }

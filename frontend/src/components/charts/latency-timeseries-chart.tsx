@@ -160,6 +160,11 @@ export function LatencyTimeseriesChart({
           onChange={onVenueSelectionChange}
         />
         <SeriesLegend series={displaySeries} hideOutliers={hideOutliers} />
+        {displayMode !== "raw" ? (
+          <div className="mt-2 text-[10px] text-muted-foreground">
+            Shaded bands show IQR.
+          </div>
+        ) : null}
       </div>
       <div className="h-[360px] px-2 py-3">
         {isLoading ? (
@@ -191,22 +196,12 @@ export function LatencyTimeseriesChart({
 function ChartLoadingState() {
   return (
     <div
-      className="flex h-full flex-col justify-between px-2 py-1"
+      className="flex h-full flex-col items-center justify-center gap-3 px-2 py-1 text-[11px] text-muted-foreground"
       aria-label="Loading latency chart"
       role="status"
     >
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>Loading latency data</span>
-        <span>Fetching latest samples</span>
-      </div>
-      <div className="relative h-[280px] overflow-hidden rounded-sm border border-border/60 bg-surface-2/40">
-        <div className="absolute inset-x-0 top-1/4 border-t border-dashed border-border/70" />
-        <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border/70" />
-        <div className="absolute inset-x-0 top-3/4 border-t border-dashed border-border/70" />
-        <div className="absolute left-[8%] top-[30%] h-1.5 w-[68%] animate-pulse rounded-full bg-primary/25" />
-        <div className="absolute left-[18%] top-[48%] h-1.5 w-[58%] animate-pulse rounded-full bg-profit/20 [animation-delay:120ms]" />
-        <div className="absolute left-[28%] top-[64%] h-1.5 w-[50%] animate-pulse rounded-full bg-warning/20 [animation-delay:240ms]" />
-      </div>
+      <div className="size-5 animate-spin rounded-full border-2 border-border border-t-primary" />
+      <span>Loading latency data</span>
     </div>
   )
 }
