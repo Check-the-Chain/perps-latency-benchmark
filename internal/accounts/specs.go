@@ -162,4 +162,21 @@ var venueSpecs = []VenueSpec{
 			"Run with: go run ./cmd/perps-bench run --config examples/nado-builder.json --env-file .env.nado.local --confirm-live",
 		},
 	},
+	{
+		Name:        "nado_direct",
+		WalletKinds: []WalletKind{WalletEVM},
+		Supported:   true,
+		Env: []EnvVar{
+			{Name: "NADO_PRIVATE_KEY", Wallet: WalletEVM, Secret: true, Required: true, Note: "EVM private key used for direct Nado EIP-712 order signing."},
+			{Name: "NADO_ADDRESS", Wallet: WalletEVM, Note: "Derived EVM address; optional because the builder derives it from NADO_PRIVATE_KEY."},
+			{Name: "NADO_CHAIN_ID", Note: "Optional chain ID override; defaults to Ink mainnet chain ID 57073."},
+			{Name: "NADO_ENDPOINT_CONTRACT", Note: "Endpoint contract used for authenticated subscription confirmation and cleanup signing."},
+		},
+		ManualSteps: []string{
+			"Create/fund the direct Nado subaccount for the configured product and subaccount name.",
+			"Use wss://prod-mm.nado-backend.xyz/ws/v2 for Gateway WebSocket submission and https://prod-mm.nado-backend.xyz/execute for REST fallback/cleanup.",
+			"Keep the default POST_ONLY order type for maker latency and risk-controlled runs.",
+			"Run with: go run ./cmd/perps-bench run --config examples/nado-direct-builder.json --env-file .env.nado-direct.local --confirm-live",
+		},
+	},
 }

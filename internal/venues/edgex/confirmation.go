@@ -13,26 +13,27 @@ import (
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "confirmation",
 		Venue:    "edgex",
 		IDField:  "client_order_ids",
 		Required: []string{"ws_url"},
-	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	headers := plan.Headers("headers")
-	if headers.Get("X-edgeX-Api-Timestamp") == "" || headers.Get("X-edgeX-Api-Signature") == "" {
-		return nil, fmt.Errorf("edgex confirmation metadata missing websocket auth headers")
-	}
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("edgex", plan.WSURL))
-	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return confirmws.Dial(ctx, plan.WSURL, headers, false)
-		},
-	}, func(msg map[string]any) (bool, error) {
-		return matchEdgeXConfirmation(msg, plan.IDs, plan.Order)
+	}, func(plan accountfeed.Plan) (accountfeed.ConfirmationBinding, error) {
+		headers := plan.Headers("headers")
+		if headers.Get("X-edgeX-Api-Timestamp") == "" || headers.Get("X-edgeX-Api-Signature") == "" {
+			return accountfeed.ConfirmationBinding{}, fmt.Errorf("edgex confirmation metadata missing websocket auth headers")
+		}
+		return accountfeed.ConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("edgex", plan.WSURL),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return confirmws.Dial(ctx, plan.WSURL, headers, false)
+				},
+			},
+			Match: func(msg map[string]any) (bool, error) {
+				return matchEdgeXConfirmation(msg, plan.IDs, plan.Order)
+			},
+		}, nil
 	})
 }
 

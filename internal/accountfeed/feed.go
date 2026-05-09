@@ -13,12 +13,22 @@ import (
 )
 
 const (
-	feedRecentLimit = 1024
-	feedRecentAge   = 10 * time.Second
-	feedAuthSkew    = 10 * time.Second
+	feedRecentLimit  = 1024
+	feedRecentAge    = 10 * time.Second
+	feedAuthSkew     = 10 * time.Second
+	feedStaleAfter   = 2 * time.Minute
+	feedPingInterval = 25 * time.Second
+	feedPingTimeout  = 5 * time.Second
 )
 
 var sharedFeeds sync.Map
+var defaultPool = &Pool{feeds: &sharedFeeds}
+
+type poolContextKey struct{}
+
+type Pool struct {
+	feeds *sync.Map
+}
 
 type Feed struct {
 	key string
@@ -28,15 +38,18 @@ type Feed struct {
 	client    *confirmws.Client
 	authUntil time.Time
 	dialKey   string
+	lastRead  time.Time
 	waiters   map[int]*feedWaiter
 	recent    []feedMessage
 	nextID    int
 }
 
 type FeedOptions struct {
-	AuthUntil time.Time
-	DialKey   string
-	Dial      func(context.Context) (*confirmws.Client, error)
+	AuthUntil    time.Time
+	DialKey      string
+	PingInterval time.Duration
+	PingTimeout  time.Duration
+	Dial         func(context.Context) (*confirmws.Client, error)
 }
 
 type feedWaiter struct {
@@ -57,7 +70,41 @@ type feedResult struct {
 }
 
 func SharedFeed(key string) *Feed {
-	value, _ := sharedFeeds.LoadOrStore(key, &Feed{key: key})
+	return defaultPool.Feed(key)
+}
+
+func NewPool() *Pool {
+	return &Pool{feeds: &sync.Map{}}
+}
+
+func WithPool(ctx context.Context, pool *Pool) context.Context {
+	if pool == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, poolContextKey{}, pool)
+}
+
+func PoolFromContext(ctx context.Context) *Pool {
+	if ctx != nil {
+		if pool, ok := ctx.Value(poolContextKey{}).(*Pool); ok && pool != nil {
+			return pool
+		}
+	}
+	return defaultPool
+}
+
+func FeedFromContext(ctx context.Context, key string) *Feed {
+	return PoolFromContext(ctx).Feed(key)
+}
+
+func (p *Pool) Feed(key string) *Feed {
+	if p == nil {
+		return SharedFeed(key)
+	}
+	if p.feeds == nil {
+		p.feeds = &sync.Map{}
+	}
+	value, _ := p.feeds.LoadOrStore(key, &Feed{key: key})
 	return value.(*Feed)
 }
 
@@ -87,6 +134,7 @@ func (f *Feed) Ensure(ctx context.Context, opts FeedOptions) error {
 	if err != nil {
 		return err
 	}
+	client.StartPingFrames(feedOptionDuration(opts.PingInterval, feedPingInterval), feedOptionDuration(opts.PingTimeout, feedPingTimeout))
 
 	f.mu.Lock()
 	old := f.client
@@ -94,6 +142,7 @@ func (f *Feed) Ensure(ctx context.Context, opts FeedOptions) error {
 	f.client = client
 	f.authUntil = opts.AuthUntil
 	f.dialKey = opts.DialKey
+	f.lastRead = time.Now().UTC()
 	f.waiters = nil
 	f.mu.Unlock()
 	if old != nil {
@@ -147,6 +196,7 @@ func (f *Feed) Wait(ctx context.Context, start time.Time, match Matcher) (netlat
 	case <-ctx.Done():
 		f.mu.Lock()
 		delete(f.waiters, id)
+		f.invalidateStaleLocked(waiter.start, ctx.Err())
 		f.mu.Unlock()
 		return feedNetResult(start, time.Now(), nil), ctx.Err()
 	case result := <-waiter.ch:
@@ -181,6 +231,7 @@ func (f *Feed) dispatch(msg feedMessage) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.recent = append(f.recent, msg)
+	f.lastRead = msg.receivedAt
 	f.trimRecentLocked(msg.receivedAt)
 	for id, waiter := range f.waiters {
 		if msg.receivedAt.Before(waiter.start) {
@@ -203,6 +254,7 @@ func (f *Feed) fail(client *confirmws.Client, err error) {
 	}
 	f.client = nil
 	f.authUntil = time.Time{}
+	f.lastRead = time.Time{}
 	waiters := f.waiters
 	f.waiters = nil
 	f.mu.Unlock()
@@ -211,6 +263,33 @@ func (f *Feed) fail(client *confirmws.Client, err error) {
 	for _, waiter := range waiters {
 		waiter.ch <- feedResult{result: feedNetResult(waiter.start, time.Now(), nil), err: err}
 	}
+}
+
+func (f *Feed) invalidateStaleLocked(waiterStart time.Time, waitErr error) {
+	if f.client == nil || waitErr == nil {
+		return
+	}
+	lastRead := f.lastRead
+	if lastRead.IsZero() {
+		lastRead = waiterStart
+	}
+	if !lastRead.Before(waiterStart) && time.Since(lastRead) <= feedStaleAfter {
+		return
+	}
+	client := f.client
+	f.client = nil
+	f.authUntil = time.Time{}
+	f.lastRead = time.Time{}
+	go func() {
+		_ = client.Close()
+	}()
+}
+
+func feedOptionDuration(value time.Duration, fallback time.Duration) time.Duration {
+	if value > 0 {
+		return value
+	}
+	return fallback
 }
 
 func (f *Feed) trimRecentLocked(now time.Time) {

@@ -25,13 +25,21 @@ export async function fetchBenchJSON<T>(path: string): Promise<T> {
 }
 
 export async function proxyBenchJSON(path: string) {
+  return proxyBenchJSONWithFallback(path)
+}
+
+export async function proxyBenchJSONWithFallback(
+  path: string,
+  fallbackPath?: string | Array<string>
+) {
   const cached = await readCachedBenchResponse(path)
   if (cached) {
     return cached
   }
 
   try {
-    const data = filterBenchJSON(path, await fetchBenchJSON(path))
+    const fetched = await fetchBenchJSONWithFallback(path, fallbackPath)
+    const data = shapeBenchJSON(fetched.path, fetched.data)
     const shouldCache = shouldCacheBenchData(path, data)
     const response = Response.json(data, {
       headers: cacheHeaders(shouldCache ? "MISS" : "BYPASS"),
@@ -50,6 +58,26 @@ export async function proxyBenchJSON(path: string) {
       status: 502,
     })
   }
+}
+
+async function fetchBenchJSONWithFallback<T>(
+  path: string,
+  fallbackPath?: string | Array<string>
+): Promise<{ data: T; path: string }> {
+  const paths = [path, ...(Array.isArray(fallbackPath) ? fallbackPath : fallbackPath ? [fallbackPath] : [])]
+  let lastError: unknown
+
+  for (const candidate of paths) {
+    try {
+      return { data: await fetchBenchJSON<T>(candidate), path: candidate }
+    } catch (error) {
+      lastError = error
+      if (!(error instanceof BenchAPIError) || error.upstreamStatus !== 404) {
+        throw error
+      }
+    }
+  }
+  throw lastError
 }
 
 class BenchAPIError extends Error {
@@ -179,7 +207,7 @@ function shouldCacheBenchData(path: string, data: unknown) {
     return hasNonEmptyArray(data, "summaries")
   }
 
-  if (path.startsWith("/api/samples?")) {
+  if (isSamplesPath(path)) {
     return hasNonEmptyArray(data, "samples")
   }
 
@@ -203,7 +231,7 @@ function filterBenchJSON(path: string, data: unknown) {
     }
   }
 
-  if (path.startsWith("/api/samples?") && Array.isArray(data.samples)) {
+  if (isSamplesPath(path) && Array.isArray(data.samples)) {
     return {
       ...data,
       samples: data.samples.filter((sample) =>
@@ -213,6 +241,112 @@ function filterBenchJSON(path: string, data: unknown) {
   }
 
   return data
+}
+
+function shapeBenchJSON(path: string, data: unknown) {
+  const filtered = filterBenchJSON(path, data)
+  if (!path.startsWith("/api/samples?") || !isRecord(filtered) || !Array.isArray(filtered.samples)) {
+    return filtered
+  }
+
+  return {
+    ...filtered,
+    samples: filtered.samples.map(compactSample),
+  }
+}
+
+function isSamplesPath(path: string) {
+  return (
+    path.startsWith("/api/samples?") ||
+    path.startsWith("/api/dashboard/samples?") ||
+    path.startsWith("/api/dashboard/latency-series?") ||
+    path.startsWith("/api/dashboard/taker-cost-series?")
+  )
+}
+
+function compactSample(sample: unknown) {
+  if (!isRecord(sample)) {
+    return sample
+  }
+
+  return omitUndefined({
+    adjusted_network_ns: sample.adjusted_network_ns,
+    batch_submission: sample.batch_submission,
+    batch_size: sample.batch_size,
+    cleanup: compactCleanup(sample.cleanup),
+    completed_at: sample.completed_at,
+    cost: sample.cost,
+    expected_entry_fill: compactExpectedFill(sample.expected_entry_fill),
+    expected_exit_fill: compactExpectedFill(sample.expected_exit_fill),
+    measurement_mode: sample.measurement_mode,
+    metadata: compactMetadata(sample.metadata),
+    network_floor_ns: sample.network_floor_ns,
+    network_ns: sample.network_ns,
+    ok: sample.ok,
+    order_type: sample.order_type,
+    raw_network_ns: sample.raw_network_ns,
+    scenario: sample.scenario,
+    scheduled_at: sample.scheduled_at,
+    sent_at: sample.sent_at,
+    speed_bump_ns: sample.speed_bump_ns,
+    submission_ns: sample.submission_ns,
+    venue: sample.venue,
+    warmup: sample.warmup,
+  })
+}
+
+function compactCleanup(cleanup: unknown) {
+  if (!isRecord(cleanup)) {
+    return undefined
+  }
+
+  return omitUndefined({
+    cleanup_confirmation: cleanup.cleanup_confirmation,
+    description: cleanup.description,
+    duration_ns: cleanup.duration_ns,
+    metadata: compactCleanupMetadata(cleanup.metadata),
+    ok: cleanup.ok,
+  })
+}
+
+function compactCleanupMetadata(metadata: unknown) {
+  if (!isRecord(metadata)) {
+    return undefined
+  }
+
+  return omitUndefined({
+    cleanup_confirmation: metadata.cleanup_confirmation,
+  })
+}
+
+function compactExpectedFill(fill: unknown) {
+  if (!isRecord(fill)) {
+    return undefined
+  }
+
+  return omitUndefined({
+    book_sufficient: fill.book_sufficient,
+    expected_price: fill.expected_price,
+    side: fill.side,
+    top_sufficient: fill.top_sufficient,
+  })
+}
+
+function compactMetadata(metadata: unknown) {
+  if (!isRecord(metadata)) {
+    return undefined
+  }
+
+  return omitUndefined({
+    native_batch_endpoint: metadata.native_batch_endpoint,
+    submission_model: metadata.submission_model,
+  })
+}
+
+function omitUndefined(record: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([, value]) => value !== undefined)
+  )
 }
 
 function hiddenVenueSet() {

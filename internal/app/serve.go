@@ -79,6 +79,36 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 		}
 		writeJSON(w, map[string]any{"samples": samples})
 	}))
+	mux.HandleFunc("/api/dashboard/samples", withCORS(opts.corsOrigin, func(w http.ResponseWriter, r *http.Request) {
+		window := queryDuration(r, "window", time.Hour)
+		limit := queryInt(r, "limit", 500)
+		model, err := db.RecentDashboardSamples(r.Context(), time.Now().Add(-window), limit)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, model)
+	}))
+	mux.HandleFunc("/api/dashboard/latency-series", withCORS(opts.corsOrigin, func(w http.ResponseWriter, r *http.Request) {
+		window := queryDuration(r, "window", time.Hour)
+		limit := queryInt(r, "limit", 500)
+		model, err := db.RecentDashboardLatencySeries(r.Context(), time.Now().Add(-window), limit)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, model)
+	}))
+	mux.HandleFunc("/api/dashboard/taker-cost-series", withCORS(opts.corsOrigin, func(w http.ResponseWriter, r *http.Request) {
+		window := queryDuration(r, "window", time.Hour)
+		limit := queryInt(r, "limit", 500)
+		model, err := db.RecentDashboardTakerCostSamples(r.Context(), time.Now().Add(-window), limit)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, model)
+	}))
 
 	var handler http.Handler = mux
 	if password != "" {

@@ -7,7 +7,7 @@
     "build": "vite build",
     "build:worker": "npm run build && node scripts/prepare-worker-envs.mjs",
     "preview": "vite preview",
-    "deploy": "npm run deploy:production",
+    "deploy": "npm run deploy:staging",
     "deploy:staging": "npm run build:worker && wrangler deploy --config dist/server/wrangler.staging.json",
     "deploy:production": "npm run build:worker && wrangler deploy --config dist/server/wrangler.production.json",
     "deploy:dry-run": "npm run deploy:production:dry-run",

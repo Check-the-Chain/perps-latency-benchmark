@@ -104,7 +104,17 @@ CREATE TABLE IF NOT EXISTS samples (
   cleanup_bytes_read INTEGER NOT NULL DEFAULT 0,
   cleanup_error TEXT NOT NULL DEFAULT '',
   cleanup_description TEXT NOT NULL DEFAULT '',
+  cleanup_confirmation TEXT NOT NULL DEFAULT '',
   cleanup_metadata_json TEXT NOT NULL DEFAULT '',
+  batch_submission TEXT NOT NULL DEFAULT '',
+  expected_entry_side TEXT NOT NULL DEFAULT '',
+  expected_entry_expected_price REAL NOT NULL DEFAULT 0,
+  expected_entry_book_sufficient INTEGER NOT NULL DEFAULT -1,
+  expected_entry_top_sufficient INTEGER NOT NULL DEFAULT -1,
+  expected_exit_side TEXT NOT NULL DEFAULT '',
+  expected_exit_expected_price REAL NOT NULL DEFAULT 0,
+  expected_exit_book_sufficient INTEGER NOT NULL DEFAULT -1,
+  expected_exit_top_sufficient INTEGER NOT NULL DEFAULT -1,
   order_refs_json TEXT NOT NULL DEFAULT '',
   closeout_order_refs_json TEXT NOT NULL DEFAULT '',
   expected_entry_fill_json TEXT NOT NULL DEFAULT '',
@@ -214,7 +224,37 @@ CREATE INDEX IF NOT EXISTS sample_costs_completed_at_idx ON sample_costs(complet
 	if err := s.ensureColumn(ctx, "cleanup_description", `ALTER TABLE samples ADD COLUMN cleanup_description TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "cleanup_confirmation", `ALTER TABLE samples ADD COLUMN cleanup_confirmation TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := s.ensureColumn(ctx, "cleanup_metadata_json", `ALTER TABLE samples ADD COLUMN cleanup_metadata_json TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "batch_submission", `ALTER TABLE samples ADD COLUMN batch_submission TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_entry_side", `ALTER TABLE samples ADD COLUMN expected_entry_side TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_entry_expected_price", `ALTER TABLE samples ADD COLUMN expected_entry_expected_price REAL NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_entry_book_sufficient", `ALTER TABLE samples ADD COLUMN expected_entry_book_sufficient INTEGER NOT NULL DEFAULT -1`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_entry_top_sufficient", `ALTER TABLE samples ADD COLUMN expected_entry_top_sufficient INTEGER NOT NULL DEFAULT -1`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_exit_side", `ALTER TABLE samples ADD COLUMN expected_exit_side TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_exit_expected_price", `ALTER TABLE samples ADD COLUMN expected_exit_expected_price REAL NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_exit_book_sufficient", `ALTER TABLE samples ADD COLUMN expected_exit_book_sufficient INTEGER NOT NULL DEFAULT -1`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "expected_exit_top_sufficient", `ALTER TABLE samples ADD COLUMN expected_exit_top_sufficient INTEGER NOT NULL DEFAULT -1`); err != nil {
 		return err
 	}
 	if err := s.ensureColumn(ctx, "order_refs_json", `ALTER TABLE samples ADD COLUMN order_refs_json TEXT NOT NULL DEFAULT ''`); err != nil {
@@ -249,8 +289,11 @@ INSERT INTO samples (
   completed_at, scheduled_at, sent_at, venue, run_id, scenario, transport, order_type, latency_mode, measurement_mode, iteration,
   batch_size, network_ns, raw_network_ns, adjusted_network_ns, network_floor_ns, network_floor_source, speed_bump_ns, speed_bump_source, submission_ns, start_delay_ns, write_delay_ns, ok, classification, classification_reason,
   cleanup_attempted, cleanup_ok, cleanup_status_code, cleanup_duration_ns, cleanup_prepared_ns, cleanup_scheduled_at, cleanup_sent_at, cleanup_start_delay_ns, cleanup_write_delay_ns, cleanup_bytes_read, cleanup_error, cleanup_description,
-  cleanup_metadata_json, order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  cleanup_confirmation, cleanup_metadata_json, batch_submission,
+  expected_entry_side, expected_entry_expected_price, expected_entry_book_sufficient, expected_entry_top_sufficient,
+  expected_exit_side, expected_exit_expected_price, expected_exit_book_sufficient, expected_exit_top_sufficient,
+  order_refs_json, closeout_order_refs_json, expected_entry_fill_json, expected_exit_fill_json, metadata_json, error
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 	if err != nil {
 		_ = tx.Rollback()

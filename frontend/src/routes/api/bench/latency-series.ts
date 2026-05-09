@@ -5,7 +5,7 @@ import { DEFAULT_WINDOW, isWindowOption } from "@/api/bench"
 
 const MAX_LIMIT = 10000
 
-export const Route = createFileRoute("/api/bench/samples")({
+export const Route = createFileRoute("/api/bench/latency-series")({
   server: {
     handlers: {
       GET: async ({ request }) => {
@@ -19,8 +19,11 @@ export const Route = createFileRoute("/api/bench/samples")({
             : 2000
 
         return proxyBenchJSONWithFallback(
-          `/api/dashboard/samples?window=${safeWindow}&limit=${safeLimit}`,
-          `/api/samples?window=${safeWindow}&limit=${safeLimit}`
+          `/api/dashboard/latency-series?window=${safeWindow}&limit=${safeLimit}`,
+          [
+            `/api/dashboard/samples?window=${safeWindow}&limit=${safeLimit}`,
+            `/api/samples?window=${safeWindow}&limit=${safeLimit}`,
+          ]
         )
       },
     },

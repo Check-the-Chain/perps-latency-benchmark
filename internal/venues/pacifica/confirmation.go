@@ -14,43 +14,45 @@ import (
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "confirmation",
 		Venue:    "pacifica",
 		IDField:  "client_order_ids",
 		Required: []string{"ws_url", "account"},
-	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	account := plan.Text("account")
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("pacifica", plan.WSURL, account))
-	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return dialAccountOrderUpdates(ctx, plan.WSURL, account)
-		},
-	}, func(msg map[string]any) (bool, error) {
-		return matchPacificaConfirmation(msg, plan.IDs, plan.Order)
+	}, func(plan accountfeed.Plan) (accountfeed.ConfirmationBinding, error) {
+		account := plan.Text("account")
+		return accountfeed.ConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("pacifica", plan.WSURL, account),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return dialAccountOrderUpdates(ctx, plan.WSURL, account)
+				},
+			},
+			Match: func(msg map[string]any) (bool, error) {
+				return matchPacificaConfirmation(msg, plan.IDs, plan.Order)
+			},
+		}, nil
 	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewCancelConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "cancel_confirmation",
 		Venue:    "pacifica",
 		IDField:  "client_order_ids",
 		Required: []string{"ws_url", "account"},
+	}, func(plan accountfeed.Plan) (accountfeed.CancelConfirmationBinding, error) {
+		account := plan.Text("account")
+		return accountfeed.CancelConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("pacifica", plan.WSURL, account),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return dialAccountOrderUpdates(ctx, plan.WSURL, account)
+				},
+			},
+			Match: matchPacificaCancelConfirmation,
+		}, nil
 	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	account := plan.Text("account")
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("pacifica", plan.WSURL, account))
-	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return dialAccountOrderUpdates(ctx, plan.WSURL, account)
-		},
-	}, plan.IDs, matchPacificaCancelConfirmation)
 }
 
 func dialAccountOrderUpdates(ctx context.Context, wsURL string, account string) (*confirmws.Client, error) {

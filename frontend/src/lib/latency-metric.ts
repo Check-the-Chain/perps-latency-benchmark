@@ -25,6 +25,13 @@ export function confirmP95(row: SummaryRow, subtractNetworkFloor = false) {
 }
 
 export function confirmSampleMs(sample: Sample, subtractNetworkFloor = false) {
+  if (sample.confirm_ns && sample.confirm_ns > 0) {
+    return nsToMs(
+      subtractNetworkFloor
+        ? subtractNetworkFloorNS(sample.confirm_ns, sample)
+        : sample.confirm_ns
+    )
+  }
   return nsToMs(
     subtractNetworkFloor
       ? subtractNetworkFloorNS(adjustedNetworkNS(sample), sample)
@@ -33,6 +40,17 @@ export function confirmSampleMs(sample: Sample, subtractNetworkFloor = false) {
 }
 
 export function cancelSampleMs(sample: Sample, subtractNetworkFloor = false) {
+  if (
+    sample.cleanup_account_feed &&
+    sample.cleanup_confirm_ns &&
+    sample.cleanup_confirm_ns > 0
+  ) {
+    return nsToMs(
+      subtractNetworkFloor
+        ? subtractNetworkFloorNS(sample.cleanup_confirm_ns, sample)
+        : sample.cleanup_confirm_ns
+    )
+  }
   const durationNS = sample.cleanup?.duration_ns
   return isAccountFeedCancelCleanup(sample) && durationNS && durationNS > 0
     ? nsToMs(
@@ -65,9 +83,15 @@ export function isCancelCleanup(sample: Sample) {
 }
 
 export function isAccountFeedCancelCleanup(sample: Sample) {
+  if (sample.cleanup_account_feed) {
+    return true
+  }
+  const confirmation =
+    sample.cleanup?.cleanup_confirmation ??
+    sample.cleanup?.metadata?.cleanup_confirmation
   return Boolean(
     isCancelCleanup(sample) &&
-      sample.cleanup?.metadata?.cleanup_confirmation === "account_feed"
+      confirmation === "account_feed"
   )
 }
 
@@ -166,5 +190,5 @@ function isTakerOrderType(orderType?: string) {
 function rawNetworkNS(sample: Sample) {
   return sample.raw_network_ns && sample.raw_network_ns > 0
     ? sample.raw_network_ns
-    : sample.network_ns
+    : sample.network_ns ?? 0
 }

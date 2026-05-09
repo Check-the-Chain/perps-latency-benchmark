@@ -32,7 +32,9 @@ func TestNamesIncludesInitialVenueSet(t *testing.T) {
 		"grvt",
 		"hyperliquid",
 		"lighter",
+		"lighter_free",
 		"nado",
+		"nado_direct",
 		"pacifica",
 		"variational_omni",
 	} {

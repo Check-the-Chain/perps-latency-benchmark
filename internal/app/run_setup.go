@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/netbaseline"
 	"perps-latency-benchmark/internal/netlatency"
@@ -19,11 +20,19 @@ type runResources struct {
 	Client                *netlatency.Client
 	Venue                 bench.Venue
 	Cleanup               bench.CleanupAdapter
+	FeedPool              *accountfeed.Pool
 	NetworkBaseline       bench.NetworkBaselineObserver
 	NetworkBaselineCancel context.CancelFunc
 	BookCancel            context.CancelFunc
 	Definition            spec.Definition
 	Runtime               spec.RuntimeConfig
+}
+
+func (r *runResources) Context(ctx context.Context) context.Context {
+	if r == nil {
+		return ctx
+	}
+	return accountfeed.WithPool(ctx, r.FeedPool)
 }
 
 func (r *runResources) Close(ctx context.Context) error {
@@ -65,7 +74,7 @@ func (r *runResources) closeBackground() {
 	}
 }
 
-func buildRunResources(ctx context.Context, venueName string, cfg fileConfig, runID string) (*runResources, error) {
+func buildRunResources(ctx context.Context, venueName string, cfg fileConfig, runID string, feedPool *accountfeed.Pool) (*runResources, error) {
 	benchConfig := cfg.Benchmark.toBenchConfig()
 	if runID != "" {
 		benchConfig.RunID = runID
@@ -81,6 +90,10 @@ func buildRunResources(ctx context.Context, venueName string, cfg fileConfig, ru
 		VenueName: venueName,
 		Config:    cfg,
 		Bench:     benchConfig,
+		FeedPool:  feedPool,
+	}
+	if resources.FeedPool == nil {
+		resources.FeedPool = accountfeed.NewPool()
 	}
 	if runtime, ok := resolveVenueRuntime(venueName, cfg); ok {
 		resources.Definition = runtime.Definition

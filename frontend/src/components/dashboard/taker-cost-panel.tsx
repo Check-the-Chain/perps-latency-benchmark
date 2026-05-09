@@ -72,7 +72,10 @@ export function TakerCostPanel({
   samples: Array<Sample>
 }) {
   const [chartMode, setChartMode] = useState<CostChartMode>("total")
-  const records = useMemo(() => buildTakerCostRecords(samples), [samples])
+  const records = useMemo(
+    () => buildTakerCostRecords(samples),
+    [samples]
+  )
   const stable = useMemo(() => stableCostWindow(records), [records])
   const slippage = useMemo(() => summarizeSlippage(stable.records), [stable.records])
   const cheapestVenue = useMemo(

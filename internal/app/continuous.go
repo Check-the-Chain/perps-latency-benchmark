@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/store"
 )
@@ -72,6 +73,8 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 	if baseRunID == "" {
 		baseRunID = bench.NewRunID()
 	}
+	feedPool := accountfeed.NewPool()
+	runCtx := accountfeed.WithPool(ctx, feedPool)
 	rateLimits := &rateLimitState{}
 	for chunk := 0; ; chunk++ {
 		chunkStarted := time.Now()
@@ -87,14 +90,14 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 		if chunk > 0 {
 			chunkCfg.Benchmark.Warmups = 0
 		}
-		if err := rateLimits.preflight(ctx, venueName, chunkCfg); err != nil {
+		if err := rateLimits.preflight(runCtx, venueName, chunkCfg); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "rate limit preflight: %v\n", err)
-			if err := sleepContinuousChunk(ctx, chunkStarted, cfg.Benchmark.RatePerSecond, chunkCfg.Benchmark.Warmups+chunkCfg.Benchmark.Iterations); err != nil {
+			if err := sleepContinuousChunk(runCtx, chunkStarted, cfg.Benchmark.RatePerSecond, chunkCfg.Benchmark.Warmups+chunkCfg.Benchmark.Iterations); err != nil {
 				return nil
 			}
 			continue
 		}
-		result, err := runWithConfig(ctx, venueName, chunkCfg)
+		result, err := runWithConfig(runCtx, venueName, chunkCfg, feedPool)
 		if err != nil {
 			return err
 		}
@@ -107,7 +110,7 @@ func runContinuous(ctx context.Context, cmd *cobra.Command, opts *continuousOpti
 			}
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), bench.FormatSummary(result))
-		if err := sleepContinuousChunk(ctx, chunkStarted, cfg.Benchmark.RatePerSecond, chunkCfg.Benchmark.Warmups+chunkCfg.Benchmark.Iterations); err != nil {
+		if err := sleepContinuousChunk(runCtx, chunkStarted, cfg.Benchmark.RatePerSecond, chunkCfg.Benchmark.Warmups+chunkCfg.Benchmark.Iterations); err != nil {
 			return nil
 		}
 	}

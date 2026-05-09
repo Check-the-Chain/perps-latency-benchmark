@@ -14,50 +14,52 @@ import (
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "confirmation",
 		Venue:    "extended",
 		IDField:  "external_ids",
 		Required: []string{"ws_url", "api_key"},
-	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	if plan.WSURL == "" {
-		return nil, nil
-	}
-	headers := http.Header{}
-	headers.Set("X-Api-Key", plan.Text("api_key"))
-	headers.Set("User-Agent", "perps-latency-benchmark")
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")))
-	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return confirmws.Dial(ctx, plan.WSURL, headers, false)
-		},
-	}, func(msg map[string]any) (bool, error) {
-		return matchExtendedConfirmation(msg, plan.IDs, plan.Order)
+	}, func(plan accountfeed.Plan) (accountfeed.ConfirmationBinding, error) {
+		headers := extendedHeaders(plan)
+		return accountfeed.ConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return confirmws.Dial(ctx, plan.WSURL, headers, false)
+				},
+			},
+			Match: func(msg map[string]any) (bool, error) {
+				return matchExtendedConfirmation(msg, plan.IDs, plan.Order)
+			},
+		}, nil
 	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewCancelConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "cancel_confirmation",
 		Venue:    "extended",
 		IDField:  "external_ids",
 		Required: []string{"ws_url", "api_key"},
+	}, func(plan accountfeed.Plan) (accountfeed.CancelConfirmationBinding, error) {
+		headers := extendedHeaders(plan)
+		return accountfeed.CancelConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return confirmws.Dial(ctx, plan.WSURL, headers, false)
+				},
+			},
+			Match: matchExtendedCancelConfirmation,
+		}, nil
 	})
-	if !ok || err != nil {
-		return nil, err
-	}
+}
+
+func extendedHeaders(plan accountfeed.Plan) http.Header {
 	headers := http.Header{}
 	headers.Set("X-Api-Key", plan.Text("api_key"))
 	headers.Set("User-Agent", "perps-latency-benchmark")
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("extended", plan.WSURL, plan.Text("api_key")))
-	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return confirmws.Dial(ctx, plan.WSURL, headers, false)
-		},
-	}, plan.IDs, matchExtendedCancelConfirmation)
+	return headers
 }
 
 func matchExtendedConfirmation(msg map[string]any, externalIDs map[string]struct{}, orderType string) (bool, error) {

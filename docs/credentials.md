@@ -15,6 +15,7 @@ Recommended layout:
 - `.env.variational.local`: Variational credentials.
 - `.env.pacifica.local`: Pacifica credentials.
 - `.env.nado.local`: Nado credentials.
+- `.env.nado-direct.local`: Nado direct-backend runner credentials.
 
 The matching `.env.*.example` files are committed as templates. Local dotenv
 files are ignored by git.
@@ -250,3 +251,8 @@ discard window. `NADO_ADDRESS` is optional because it is derived from
 `NADO_PRIVATE_KEY`; set it only as a guardrail. `NADO_ENDPOINT_CONTRACT` is
 only needed when enabling authenticated subscription confirmation or cleanup. A
 funded Nado subaccount is needed for live submit tests.
+
+The direct-backend runner is configured as `nado_direct` in
+`examples/nado-direct-builder.json`. It uses
+`https://prod-mm.nado-backend.xyz/execute` for REST fallback/cleanup and
+`wss://prod-mm.nado-backend.xyz/ws/v2` for Gateway WebSocket submission.

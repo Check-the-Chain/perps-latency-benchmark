@@ -14,46 +14,45 @@ import (
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "confirmation",
 		Venue:    "aster",
 		IDField:  "client_order_ids",
 		Required: []string{"ws_url"},
-	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	if plan.WSURL == "" {
-		return nil, nil
-	}
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")))
-	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
-		DialKey: plan.WSURL,
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
-		},
-	}, func(msg map[string]any) (bool, error) {
-		return matchAsterConfirmation(msg, plan.IDs, plan.Order)
+	}, func(plan accountfeed.Plan) (accountfeed.ConfirmationBinding, error) {
+		return accountfeed.ConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")),
+			Options: accountfeed.FeedOptions{
+				DialKey: plan.WSURL,
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
+				},
+			},
+			Match: func(msg map[string]any) (bool, error) {
+				return matchAsterConfirmation(msg, plan.IDs, plan.Order)
+			},
+		}, nil
 	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewCancelConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "cancel_confirmation",
 		Venue:    "aster",
 		IDField:  "client_order_ids",
 		Required: []string{"ws_url"},
+	}, func(plan accountfeed.Plan) (accountfeed.CancelConfirmationBinding, error) {
+		return accountfeed.CancelConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")),
+			Options: accountfeed.FeedOptions{
+				DialKey: plan.WSURL,
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
+				},
+			},
+			Match: matchAsterCancelConfirmation,
+		}, nil
 	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("aster", asterFeedBase(plan.WSURL), plan.Text("user")))
-	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
-		DialKey: plan.WSURL,
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return confirmws.Dial(ctx, plan.WSURL, http.Header{}, false)
-		},
-	}, plan.IDs, matchAsterCancelConfirmation)
 }
 
 func asterFeedBase(wsURL string) string {

@@ -10,13 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiBenchTakerCostSeriesRouteImport } from './routes/api/bench/taker-cost-series'
 import { Route as ApiBenchSamplesRouteImport } from './routes/api/bench/samples'
 import { Route as ApiBenchLatestRouteImport } from './routes/api/bench/latest'
+import { Route as ApiBenchLatencySeriesRouteImport } from './routes/api/bench/latency-series'
 import { Route as ApiBenchHealthRouteImport } from './routes/api/bench/health'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBenchTakerCostSeriesRoute = ApiBenchTakerCostSeriesRouteImport.update({
+  id: '/api/bench/taker-cost-series',
+  path: '/api/bench/taker-cost-series',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBenchSamplesRoute = ApiBenchSamplesRouteImport.update({
@@ -29,6 +36,11 @@ const ApiBenchLatestRoute = ApiBenchLatestRouteImport.update({
   path: '/api/bench/latest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBenchLatencySeriesRoute = ApiBenchLatencySeriesRouteImport.update({
+  id: '/api/bench/latency-series',
+  path: '/api/bench/latency-series',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBenchHealthRoute = ApiBenchHealthRouteImport.update({
   id: '/api/bench/health',
   path: '/api/bench/health',
@@ -38,44 +50,62 @@ const ApiBenchHealthRoute = ApiBenchHealthRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/bench/health': typeof ApiBenchHealthRoute
+  '/api/bench/latency-series': typeof ApiBenchLatencySeriesRoute
   '/api/bench/latest': typeof ApiBenchLatestRoute
   '/api/bench/samples': typeof ApiBenchSamplesRoute
+  '/api/bench/taker-cost-series': typeof ApiBenchTakerCostSeriesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/bench/health': typeof ApiBenchHealthRoute
+  '/api/bench/latency-series': typeof ApiBenchLatencySeriesRoute
   '/api/bench/latest': typeof ApiBenchLatestRoute
   '/api/bench/samples': typeof ApiBenchSamplesRoute
+  '/api/bench/taker-cost-series': typeof ApiBenchTakerCostSeriesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/bench/health': typeof ApiBenchHealthRoute
+  '/api/bench/latency-series': typeof ApiBenchLatencySeriesRoute
   '/api/bench/latest': typeof ApiBenchLatestRoute
   '/api/bench/samples': typeof ApiBenchSamplesRoute
+  '/api/bench/taker-cost-series': typeof ApiBenchTakerCostSeriesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/api/bench/health'
+    | '/api/bench/latency-series'
     | '/api/bench/latest'
     | '/api/bench/samples'
+    | '/api/bench/taker-cost-series'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/bench/health' | '/api/bench/latest' | '/api/bench/samples'
+  to:
+    | '/'
+    | '/api/bench/health'
+    | '/api/bench/latency-series'
+    | '/api/bench/latest'
+    | '/api/bench/samples'
+    | '/api/bench/taker-cost-series'
   id:
     | '__root__'
     | '/'
     | '/api/bench/health'
+    | '/api/bench/latency-series'
     | '/api/bench/latest'
     | '/api/bench/samples'
+    | '/api/bench/taker-cost-series'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiBenchHealthRoute: typeof ApiBenchHealthRoute
+  ApiBenchLatencySeriesRoute: typeof ApiBenchLatencySeriesRoute
   ApiBenchLatestRoute: typeof ApiBenchLatestRoute
   ApiBenchSamplesRoute: typeof ApiBenchSamplesRoute
+  ApiBenchTakerCostSeriesRoute: typeof ApiBenchTakerCostSeriesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -85,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/bench/taker-cost-series': {
+      id: '/api/bench/taker-cost-series'
+      path: '/api/bench/taker-cost-series'
+      fullPath: '/api/bench/taker-cost-series'
+      preLoaderRoute: typeof ApiBenchTakerCostSeriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bench/samples': {
@@ -101,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBenchLatestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/bench/latency-series': {
+      id: '/api/bench/latency-series'
+      path: '/api/bench/latency-series'
+      fullPath: '/api/bench/latency-series'
+      preLoaderRoute: typeof ApiBenchLatencySeriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/bench/health': {
       id: '/api/bench/health'
       path: '/api/bench/health'
@@ -114,8 +158,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiBenchHealthRoute: ApiBenchHealthRoute,
+  ApiBenchLatencySeriesRoute: ApiBenchLatencySeriesRoute,
   ApiBenchLatestRoute: ApiBenchLatestRoute,
   ApiBenchSamplesRoute: ApiBenchSamplesRoute,
+  ApiBenchTakerCostSeriesRoute: ApiBenchTakerCostSeriesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

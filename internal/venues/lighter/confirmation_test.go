@@ -1,7 +1,10 @@
 package lighter
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestMatchLighterConfirmationByTradeClientID(t *testing.T) {
@@ -69,4 +72,26 @@ func TestMatchLighterCancelConfirmationWaitsForAllOrders(t *testing.T) {
 	if !second {
 		t.Fatalf("expected all cancels confirmed, remaining = %#v", remaining)
 	}
+}
+
+func TestLighterAuthExpirationParsesJWTExp(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	token := testJWT(map[string]any{"exp": expiresAt.Unix()})
+
+	got := lighterAuthExpiration(token)
+	if !got.Equal(expiresAt) {
+		t.Fatalf("expiration = %s, want %s", got, expiresAt)
+	}
+}
+
+func TestLighterAuthExpirationIgnoresOpaqueToken(t *testing.T) {
+	if got := lighterAuthExpiration("opaque-token"); !got.IsZero() {
+		t.Fatalf("expiration = %s, want zero", got)
+	}
+}
+
+func testJWT(claims map[string]any) string {
+	header, _ := json.Marshal(map[string]any{"alg": "none"})
+	payload, _ := json.Marshal(claims)
+	return base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload) + "."
 }

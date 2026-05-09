@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"perps-latency-benchmark/internal/bench"
@@ -80,6 +81,8 @@ func sampleInsertValues(record SampleRecord) ([]any, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	entryFillProjection := expectedFillProjection(sample.ExpectedEntryFill)
+	exitFillProjection := expectedFillProjection(sample.ExpectedExitFill)
 	expectedEntryJSON, err := marshalOptionalJSON(sample.ExpectedEntryFill)
 	if err != nil {
 		return nil, false, err
@@ -126,7 +129,17 @@ func sampleInsertValues(record SampleRecord) ([]any, bool, error) {
 		cleanupBytesRead,
 		cleanupError,
 		cleanupDescription,
+		cleanupConfirmation(sample.Cleanup),
 		cleanupMetadataJSON,
+		batchSubmission(sample),
+		entryFillProjection.side,
+		entryFillProjection.expectedPrice,
+		entryFillProjection.bookSufficient,
+		entryFillProjection.topSufficient,
+		exitFillProjection.side,
+		exitFillProjection.expectedPrice,
+		exitFillProjection.bookSufficient,
+		exitFillProjection.topSufficient,
 		orderRefsJSON,
 		closeoutRefsJSON,
 		expectedEntryJSON,
@@ -134,6 +147,78 @@ func sampleInsertValues(record SampleRecord) ([]any, bool, error) {
 		metadataJSON,
 		sample.Error,
 	}, true, nil
+}
+
+type expectedFillStorageProjection struct {
+	side           string
+	expectedPrice  float64
+	bookSufficient int
+	topSufficient  int
+}
+
+func expectedFillProjection(fill *bench.ExpectedFill) expectedFillStorageProjection {
+	if fill == nil {
+		return expectedFillStorageProjection{
+			bookSufficient: -1,
+			topSufficient:  -1,
+		}
+	}
+	return expectedFillStorageProjection{
+		side:           fill.Side,
+		expectedPrice:  fill.ExpectedPrice,
+		bookSufficient: boolPtrState(fill.BookSufficient),
+		topSufficient:  boolState(fill.TopSufficient),
+	}
+}
+
+func boolPtrState(value *bool) int {
+	if value == nil {
+		return -1
+	}
+	return boolState(*value)
+}
+
+func boolState(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func cleanupConfirmation(cleanup *bench.CleanupResult) string {
+	if cleanup == nil || len(cleanup.Metadata) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(anyString(cleanup.Metadata[bench.CleanupConfirmationMetadataKey]))
+}
+
+func batchSubmission(sample bench.Sample) string {
+	if sample.Scenario != bench.ScenarioBatch {
+		return ""
+	}
+	if value, ok := sample.Metadata["native_batch_endpoint"]; ok {
+		if native, ok := value.(bool); ok {
+			if native {
+				return "native"
+			}
+			return "manual"
+		}
+	}
+	if model, ok := sample.Metadata["submission_model"].(string); ok && model != "" {
+		return "manual"
+	}
+	return "native"
+}
+
+func anyString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case fmt.Stringer:
+		return typed.String()
+	default:
+		return fmt.Sprint(value)
+	}
 }
 
 func (r *sampleRow) scanDestinations() []any {

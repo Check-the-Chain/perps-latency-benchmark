@@ -75,6 +75,7 @@ export interface CleanupResult {
   bytes_read?: number
   error?: string
   description?: string
+  cleanup_confirmation?: string
   metadata?: Record<string, unknown>
 }
 
@@ -141,14 +142,16 @@ export interface Sample {
   scenario: string
   transport: string
   order_type?: string
-  index: number
-  iteration: number
-  warmup: boolean
+  index?: number
+  iteration?: number
+  warmup?: boolean
   batch_size: number
+  plot_at?: string
   scheduled_at?: string
   sent_at?: string
-  prepared_ns: number
-  network_ns: number
+  prepared_ns?: number
+  network_ns?: number
+  confirm_ns?: number
   raw_network_ns?: number
   adjusted_network_ns?: number
   network_floor_ns?: number
@@ -163,14 +166,17 @@ export interface Sample {
   ok: boolean
   error?: string
   cleanup?: CleanupResult
+  cleanup_confirm_ns?: number
+  cleanup_account_feed?: boolean
   cost?: SampleCost
   order_refs?: OrderRef[]
   closeout_order_refs?: OrderRef[]
   expected_entry_fill?: ExpectedFill
   expected_exit_fill?: ExpectedFill
+  batch_submission?: string
   metadata?: Record<string, unknown>
   measurement_mode?: string
-  completed_at: string
+  completed_at?: string
 }
 
 export const WINDOW_OPTIONS = ["6h", "12h", "24h"] as const
@@ -206,7 +212,35 @@ export function samplesQueryOptions(window: WindowOption) {
       fetchJSON<SamplesResponse>(
         `/api/bench/samples?window=${window}&limit=10000`
       ),
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+    staleTime: 20_000,
+  })
+}
+
+export function latencySeriesQueryOptions(window: WindowOption) {
+  return queryOptions({
+    queryKey: ["bench-latency-series", window],
+    queryFn: () =>
+      fetchJSON<SamplesResponse>(
+        `/api/bench/latency-series?window=${window}&limit=10000`
+      ),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+    staleTime: 20_000,
+  })
+}
+
+export function takerCostSeriesQueryOptions(window: WindowOption) {
+  return queryOptions({
+    queryKey: ["bench-taker-cost-series", window],
+    queryFn: () =>
+      fetchJSON<SamplesResponse>(
+        `/api/bench/taker-cost-series?window=${window}&limit=10000`
+      ),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+    staleTime: 20_000,
   })
 }
 

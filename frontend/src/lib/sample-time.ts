@@ -1,7 +1,12 @@
 import type { Sample } from "@/api/bench"
 
 export function samplePlotDate(sample: Sample) {
-  return firstValidDate(sample.scheduled_at, sample.sent_at, sample.completed_at)
+  return firstValidDate(
+    sample.plot_at,
+    sample.scheduled_at,
+    sample.sent_at,
+    sample.completed_at
+  )
 }
 
 function firstValidDate(...values: Array<string | undefined>) {

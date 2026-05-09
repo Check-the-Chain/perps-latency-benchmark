@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/accounts"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/lifecycle"
@@ -140,7 +141,7 @@ func runBenchmark(ctx context.Context, cmd *cobra.Command, opts *runOptions) err
 		return err
 	}
 
-	result, err := runWithConfig(ctx, venueName, cfg)
+	result, err := runWithConfig(ctx, venueName, cfg, nil)
 	if err != nil {
 		return err
 	}
@@ -227,7 +228,7 @@ func runTransportComparison(ctx context.Context, cmd *cobra.Command, opts *runOp
 		if err := checkAccountsForRun(venueName, variantCfg); err != nil {
 			return err
 		}
-		result, err := runWithConfig(ctx, venueName, variantCfg)
+		result, err := runWithConfig(ctx, venueName, variantCfg, nil)
 		if err != nil {
 			return fmt.Errorf("%s: %w", transport, err)
 		}
@@ -405,8 +406,8 @@ func checkAccountsForRun(venueName string, cfg fileConfig) error {
 	return nil
 }
 
-func runWithConfig(ctx context.Context, venueName string, cfg fileConfig) (bench.Result, error) {
-	resources, err := buildRunResources(ctx, venueName, cfg, "")
+func runWithConfig(ctx context.Context, venueName string, cfg fileConfig, feedPool *accountfeed.Pool) (bench.Result, error) {
+	resources, err := buildRunResources(ctx, venueName, cfg, "", feedPool)
 	if err != nil {
 		return bench.Result{}, err
 	}
@@ -418,7 +419,7 @@ func runWithConfig(ctx context.Context, venueName string, cfg fileConfig) (bench
 		Venue:           resources.Venue,
 		Cleanup:         resources.Cleanup,
 		NetworkBaseline: resources.NetworkBaseline,
-	}.Run(ctx)
+	}.Run(resources.Context(ctx))
 }
 
 func parseTransports(raw string) []string {

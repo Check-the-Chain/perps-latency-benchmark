@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"perps-latency-benchmark/internal/confirmws"
 )
 
 func TestFeedReplaysRecentMessage(t *testing.T) {
@@ -72,5 +74,44 @@ func TestFeedPropagatesMatchErrorToOneWaiter(t *testing.T) {
 	}
 	if result.Trace.StartedAt.IsZero() {
 		t.Fatal("expected result trace")
+	}
+}
+
+func TestPoolKeepsFeedsIsolated(t *testing.T) {
+	first := NewPool()
+	second := NewPool()
+
+	if first.Feed("same") == second.Feed("same") {
+		t.Fatal("expected separate pools to isolate feed instances")
+	}
+}
+
+func TestFeedFromContextUsesRuntimePool(t *testing.T) {
+	pool := NewPool()
+	ctx := WithPool(context.Background(), pool)
+
+	if got, want := FeedFromContext(ctx, "runtime"), pool.Feed("runtime"); got != want {
+		t.Fatalf("feed = %p, want %p", got, want)
+	}
+}
+
+func TestFeedInvalidatesStaleClientOnWaitTimeout(t *testing.T) {
+	feed := &Feed{
+		key:      "test",
+		client:   &confirmws.Client{},
+		lastRead: time.Now().Add(-time.Minute),
+	}
+	start := time.Now().UTC()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
+	_, err := feed.Wait(ctx, start, func(map[string]any) (bool, error) {
+		return false, nil
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+	if feed.client != nil {
+		t.Fatal("expected stale client to be invalidated")
 	}
 }

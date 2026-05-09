@@ -852,7 +852,7 @@ function buildSeries(
   const grouped = new Map<string, Array<Point>>()
 
   for (const sample of samples) {
-    if (!sample.ok || sample.warmup || sample.network_ns <= 0) {
+    if (!sample.ok || sample.warmup) {
       continue
     }
 
@@ -897,6 +897,9 @@ function buildSeries(
 function batchSubmission(sample: Sample) {
   if (sample.scenario !== "batch") {
     return ""
+  }
+  if (sample.batch_submission === "manual" || sample.batch_submission === "native") {
+    return sample.batch_submission
   }
   if (sample.metadata?.native_batch_endpoint === false) {
     return "manual"
@@ -1146,5 +1149,6 @@ const KNOWN_VENUE_COLORS: Record<string, string> = {
   lighter: "oklch(0.55 0.17 245)",
   lighter_free: "oklch(0.66 0.16 220)",
   nado: "oklch(0.55 0.18 305)",
+  nado_direct: "oklch(0.65 0.16 325)",
   variational_omni: "oklch(0.62 0.15 75)",
 }

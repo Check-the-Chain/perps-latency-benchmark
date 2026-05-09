@@ -15,43 +15,45 @@ import (
 )
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "confirmation",
 		Venue:    "hyperliquid",
 		IDField:  "cloids",
 		Required: []string{"ws_url", "user"},
-	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	user := plan.Text("user")
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("hyperliquid", plan.WSURL, user))
-	return accountfeed.NewPersistentConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return dialOrderUpdates(ctx, plan.WSURL, user)
-		},
-	}, func(msg map[string]any) (bool, error) {
-		return matchHyperliquidConfirmation(msg, plan.IDs, plan.Order)
+	}, func(plan accountfeed.Plan) (accountfeed.ConfirmationBinding, error) {
+		user := plan.Text("user")
+		return accountfeed.ConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("hyperliquid", plan.WSURL, user),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return dialOrderUpdates(ctx, plan.WSURL, user)
+				},
+			},
+			Match: func(msg map[string]any) (bool, error) {
+				return matchHyperliquidConfirmation(msg, plan.IDs, plan.Order)
+			},
+		}, nil
 	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewCancelConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "cancel_confirmation",
 		Venue:    "hyperliquid",
 		IDField:  "cloids",
 		Required: []string{"ws_url", "user"},
+	}, func(plan accountfeed.Plan) (accountfeed.CancelConfirmationBinding, error) {
+		user := plan.Text("user")
+		return accountfeed.CancelConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("hyperliquid", plan.WSURL, user),
+			Options: accountfeed.FeedOptions{
+				Dial: func(ctx context.Context) (*confirmws.Client, error) {
+					return dialOrderUpdates(ctx, plan.WSURL, user)
+				},
+			},
+			Match: matchHyperliquidCancelConfirmation,
+		}, nil
 	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	user := plan.Text("user")
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("hyperliquid", plan.WSURL, user))
-	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, accountfeed.FeedOptions{
-		Dial: func(ctx context.Context) (*confirmws.Client, error) {
-			return dialOrderUpdates(ctx, plan.WSURL, user)
-		},
-	}, plan.IDs, matchHyperliquidCancelConfirmation)
 }
 
 func dialOrderUpdates(ctx context.Context, wsURL string, user string) (*confirmws.Client, error) {

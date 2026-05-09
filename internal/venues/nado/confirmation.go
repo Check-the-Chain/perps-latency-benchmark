@@ -22,43 +22,44 @@ type nadoSubscriptionPlan struct {
 }
 
 func ConfirmWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "confirmation",
 		Venue:    "nado",
 		IDField:  "digests",
 		Required: []string{"ws_url", "subaccount"},
-	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	subscription, err := nadoSubscriptionFromPlan(plan, "confirmation")
-	if err != nil {
-		return nil, err
-	}
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("nado", subscription.wsURL, subscription.subaccount, subscription.productID))
-	opts := nadoFeedOptions(subscription)
-	orderType := strings.ToLower(plan.Order)
-	return accountfeed.NewPersistentConfirmation(ctx, feed, opts, func(msg map[string]any) (bool, error) {
-		return matchNadoConfirmation(msg, plan.IDs, orderType)
+	}, func(plan accountfeed.Plan) (accountfeed.ConfirmationBinding, error) {
+		subscription, err := nadoSubscriptionFromPlan(plan, "confirmation")
+		if err != nil {
+			return accountfeed.ConfirmationBinding{}, err
+		}
+		orderType := strings.ToLower(plan.Order)
+		return accountfeed.ConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("nado", subscription.wsURL, subscription.subaccount, subscription.productID),
+			Options: nadoFeedOptions(subscription),
+			Match: func(msg map[string]any) (bool, error) {
+				return matchNadoConfirmation(msg, plan.IDs, orderType)
+			},
+		}, nil
 	})
 }
 
 func ConfirmCancelWebSocket(ctx context.Context, built payload.Built) (*bench.Confirmation, error) {
-	plan, ok, err := accountfeed.DecodePlan(built, accountfeed.PlanOptions{
+	return accountfeed.NewCancelConfirmation(ctx, built, accountfeed.PlanOptions{
 		Key:      "cancel_confirmation",
 		Venue:    "nado",
 		IDField:  "digests",
 		Required: []string{"ws_url", "subaccount"},
+	}, func(plan accountfeed.Plan) (accountfeed.CancelConfirmationBinding, error) {
+		subscription, err := nadoSubscriptionFromPlan(plan, "cancel confirmation")
+		if err != nil {
+			return accountfeed.CancelConfirmationBinding{}, err
+		}
+		return accountfeed.CancelConfirmationBinding{
+			FeedKey: accountfeed.FeedKey("nado", subscription.wsURL, subscription.subaccount, subscription.productID),
+			Options: nadoFeedOptions(subscription),
+			Match:   matchNadoCancelConfirmation,
+		}, nil
 	})
-	if !ok || err != nil {
-		return nil, err
-	}
-	subscription, err := nadoSubscriptionFromPlan(plan, "cancel confirmation")
-	if err != nil {
-		return nil, err
-	}
-	feed := accountfeed.SharedFeed(accountfeed.FeedKey("nado", subscription.wsURL, subscription.subaccount, subscription.productID))
-	return accountfeed.NewPersistentCancelConfirmation(ctx, feed, nadoFeedOptions(subscription), plan.IDs, matchNadoCancelConfirmation)
 }
 
 func nadoSubscriptionFromPlan(plan accountfeed.Plan, label string) (nadoSubscriptionPlan, error) {

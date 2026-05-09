@@ -7,8 +7,9 @@ import { useMemo, useState } from "react"
 import {
   DEFAULT_WINDOW,
   healthQueryOptions,
+  latencySeriesQueryOptions,
   latestQueryOptions,
-  samplesQueryOptions,
+  takerCostSeriesQueryOptions,
   type Sample,
   type SummaryRow,
 } from "@/api/bench"
@@ -55,10 +56,14 @@ export function DashboardPage() {
 
   const health = useQuery(healthQueryOptions())
   const latest = useQuery(latestQueryOptions(filters.window))
-  const samples = useQuery(samplesQueryOptions(filters.window))
+  const latencySeries = useQuery(latencySeriesQueryOptions(filters.window))
+  const takerCostSeries = useQuery(takerCostSeriesQueryOptions(filters.window))
   const isLatestLoading = latest.isLoading && !latest.data
-  const isSamplesLoading = samples.isLoading && !samples.data
-  const measurements = samples.data?.samples ?? []
+  const isLatencySeriesLoading = latencySeries.isLoading && !latencySeries.data
+  const isTakerCostSeriesLoading =
+    takerCostSeries.isLoading && !takerCostSeries.data
+  const measurements = latencySeries.data?.samples ?? []
+  const costMeasurements = takerCostSeries.data?.samples ?? []
   const visibleMeasurements = useMemo(
     () => measurements.filter((sample) => isVisibleVenue(sample.venue)),
     [measurements]
@@ -88,6 +93,10 @@ export function DashboardPage() {
     () => visibleMeasurements.filter((sample) => isTakerOrder(sample.order_type)),
     [visibleMeasurements]
   )
+  const visibleCostMeasurements = useMemo(
+    () => costMeasurements.filter((sample) => isVisibleVenue(sample.venue)),
+    [costMeasurements]
+  )
   const filteredSummaries = useMemo(
     () => filterSummaries(visibleSummaries, filters),
     [filters, visibleSummaries]
@@ -103,6 +112,10 @@ export function DashboardPage() {
   const takerSamples = useMemo(
     () => filterSamples(takerSourceSamples, filters),
     [filters, takerSourceSamples]
+  )
+  const takerCostSamples = useMemo(
+    () => filterSamples(visibleCostMeasurements, filters),
+    [filters, visibleCostMeasurements]
   )
   const cancelSamples =
     cancelChartScenario === "batch" ? batchPostOnlySamples : postOnlySamples
@@ -186,7 +199,8 @@ export function DashboardPage() {
               type="button"
               onClick={() => {
                 void latest.refetch()
-                void samples.refetch()
+                void latencySeries.refetch()
+                void takerCostSeries.refetch()
                 void health.refetch()
               }}
               className="inline-flex h-8 items-center gap-2 rounded-sm border border-border bg-surface-1 px-2 text-[11px] text-foreground"
@@ -222,7 +236,7 @@ export function DashboardPage() {
       <LatencyTimeseriesChart
         title="Post-only Confirmation"
         description="How quickly a resting order is confirmed as placed."
-        isLoading={isSamplesLoading}
+        isLoading={isLatencySeriesLoading}
         samples={postOnlySamples}
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, postOnlyVenues)}
@@ -236,7 +250,7 @@ export function DashboardPage() {
       <LatencyTimeseriesChart
         title="Batch Post-only Confirmation"
         description="Five post-only orders per sample. Native batch venues are labeled separately from manual fanout venues that send concurrent single-order requests."
-        isLoading={isSamplesLoading}
+        isLoading={isLatencySeriesLoading}
         samples={batchPostOnlySamples}
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, batchPostOnlyVenues)}
@@ -261,7 +275,7 @@ export function DashboardPage() {
             onChange={setCancelChartScenario}
           />
         }
-        isLoading={isSamplesLoading}
+        isLoading={isLatencySeriesLoading}
         samples={cancelSamples}
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, cancelVenues)}
@@ -276,7 +290,7 @@ export function DashboardPage() {
       <LatencyTimeseriesChart
         title="Taker Confirmation"
         description="How quickly a marketable order is confirmed, adjusted for published venue delays."
-        isLoading={isSamplesLoading}
+        isLoading={isLatencySeriesLoading}
         samples={takerSamples}
         scaleMode={chartScale}
         selectedVenues={selectedVenueList(filters.venues, takerVenues)}
@@ -287,7 +301,10 @@ export function DashboardPage() {
           setFilters((current) => ({ ...current, venues }))
         }
       />
-      <TakerCostPanel isLoading={isSamplesLoading} samples={takerSamples} />
+      <TakerCostPanel
+        isLoading={isTakerCostSeriesLoading}
+        samples={takerCostSamples}
+      />
       <MethodologyPanel />
     </div>
   )

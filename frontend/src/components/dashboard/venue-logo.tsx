@@ -46,6 +46,9 @@ export function formatVenueLabel(value: string) {
   if (value.toLowerCase() === "lighter_free") {
     return "Lighter Free"
   }
+  if (value.toLowerCase() === "nado_direct") {
+    return "Nado Direct"
+  }
 
   return value
     .split(/[_-]/)
@@ -69,6 +72,7 @@ function LogoMark({ venue }: { venue: string }) {
     case "lighter_free":
       return <LighterLogo />
     case "nado":
+    case "nado_direct":
       return <NadoLogo />
     case "pacifica":
       return <PacificaLogo />
@@ -99,6 +103,7 @@ function logoSurfaceClass(venue: string) {
     case "lighter_free":
       return "border-white/10 bg-[#121218]"
     case "nado":
+    case "nado_direct":
       return "border-white/10 bg-[#000000]"
     case "pacifica":
       return "border-[#55C3E9]/20 bg-[#09111B]"

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"perps-latency-benchmark/internal/accountfeed"
 	"perps-latency-benchmark/internal/bench"
 	"perps-latency-benchmark/internal/booktop"
 	costadapter "perps-latency-benchmark/internal/cost"
@@ -96,7 +97,9 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 		runID = bench.NewRunID()
 	}
 
-	items, benchItems, err := buildCoordinatedItems(ctx, opts, runID)
+	feedPool := accountfeed.NewPool()
+	runCtx := accountfeed.WithPool(ctx, feedPool)
+	items, benchItems, err := buildCoordinatedItems(runCtx, opts, runID, feedPool)
 	if err != nil {
 		return err
 	}
@@ -108,7 +111,7 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 	}
 	defer db.Close()
 
-	startupCleanup := bench.BeforeCoordinatedRun(ctx, benchItems, runID)
+	startupCleanup := bench.BeforeCoordinatedRun(runCtx, benchItems, runID)
 	for _, item := range benchItems {
 		cleanup := startupCleanup[item.Venue.Name()]
 		if cleanup == nil || cleanup.OK || item.Config.Cleanup.Mode != bench.CleanupModeStrict {
@@ -123,7 +126,7 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 		}
 		select {
 		case <-ctx.Done():
-			_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, retainedSamples)
+			_ = bench.AfterCoordinatedRun(runCtx, benchItems, runID, retainedSamples)
 			return nil
 		default:
 		}
@@ -132,14 +135,14 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 		target := nextCoordinatedBoundary(time.Now(), opts.interval)
 		prepareAt := target.Add(-opts.prepareLead)
 		if err := sleepUntil(ctx, prepareAt); err != nil {
-			_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, retainedSamples)
+			_ = bench.AfterCoordinatedRun(runCtx, benchItems, runID, retainedSamples)
 			return nil
 		}
-		if ok := coordinatedRateLimitPreflight(ctx, cmd, items, opts.interval); !ok {
+		if ok := coordinatedRateLimitPreflight(runCtx, cmd, items, opts.interval); !ok {
 			continue
 		}
-		balancesBefore := coordinatedBalances(ctx, cmd, items)
-		samples := bench.RunCoordinatedCycle(ctx, benchItems, bench.CoordinatedCycle{
+		balancesBefore := coordinatedBalances(runCtx, cmd, items)
+		samples := bench.RunCoordinatedCycle(runCtx, benchItems, bench.CoordinatedCycle{
 			Index:       cycleIndex,
 			Iteration:   iteration,
 			Warmup:      warmup,
@@ -151,7 +154,7 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 		if err := db.WriteSamples(ctx, coordinatedSampleRecords(samples, items)); err != nil {
 			return err
 		}
-		if err := writeCoordinatedCosts(ctx, cmd, db, items, samples, balancesBefore); err != nil {
+		if err := writeCoordinatedCosts(runCtx, cmd, db, items, samples, balancesBefore); err != nil {
 			return err
 		}
 		if opts.retainHours > 0 {
@@ -164,7 +167,7 @@ func runCoordinated(ctx context.Context, cmd *cobra.Command, opts *coordinatedOp
 			return err
 		}
 	}
-	_ = bench.AfterCoordinatedRun(ctx, benchItems, runID, retainedSamples)
+	_ = bench.AfterCoordinatedRun(runCtx, benchItems, runID, retainedSamples)
 	return nil
 }
 
@@ -225,8 +228,7 @@ func cleanupErrorText(cleanup *bench.CleanupResult) string {
 	return "unknown cleanup failure"
 }
 
-func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID string) ([]coordinatedRunItem, []bench.CoordinatedItem, error) {
-	_ = ctx
+func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID string, feedPool *accountfeed.Pool) ([]coordinatedRunItem, []bench.CoordinatedItem, error) {
 	items := make([]coordinatedRunItem, 0, len(opts.configPaths))
 	benchItems := make([]bench.CoordinatedItem, 0, len(opts.configPaths))
 	fail := func(err error) ([]coordinatedRunItem, []bench.CoordinatedItem, error) {
@@ -250,7 +252,7 @@ func buildCoordinatedItems(ctx context.Context, opts *coordinatedOptions, runID 
 		if err != nil {
 			return fail(fmt.Errorf("%s: %w", venueName, err))
 		}
-		resources, err := buildRunResources(ctx, venueName, cfg, runID)
+		resources, err := buildRunResources(ctx, venueName, cfg, runID, feedPool)
 		if err != nil {
 			lock.Release()
 			return fail(fmt.Errorf("%s: %w", venueName, err))

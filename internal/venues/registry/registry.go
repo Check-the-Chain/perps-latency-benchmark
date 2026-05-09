@@ -26,6 +26,7 @@ var definitions = []spec.Definition{
 	lighter.Definition(),
 	lighterFreeDefinition(),
 	nado.Definition(),
+	nadoDirectDefinition(),
 	pacifica.Definition(),
 	variational_omni.Definition(),
 }
@@ -34,6 +35,18 @@ func lighterFreeDefinition() spec.Definition {
 	definition := lighter.Definition()
 	definition.Name = "lighter_free"
 	definition.Aliases = []string{"lighter-free", "lighter free"}
+	return definition
+}
+
+func nadoDirectDefinition() spec.Definition {
+	definition := nado.Definition()
+	definition.Name = "nado_direct"
+	definition.Aliases = []string{"nado-direct", "nado direct", "nado_mm", "nado-mm"}
+	definition.DefaultBaseURL = "https://prod-mm.nado-backend.xyz"
+	definition.DefaultWSURL = "wss://prod-mm.nado-backend.xyz/ws/v2"
+	definition.Notes = append([]string{
+		"Direct backend runner uses Gateway WebSocket execute at wss://prod-mm.nado-backend.xyz/ws/v2 and REST fallback POST https://prod-mm.nado-backend.xyz/execute to bypass the public Cloudflare proxy.",
+	}, definition.Notes...)
 	return definition
 }
 

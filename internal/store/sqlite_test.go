@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,6 +194,143 @@ func TestSQLiteWritesAndReadsSamples(t *testing.T) {
 	}
 	if samples[0].Cost == nil || samples[0].Cost.TradeCostUSD != 1.02 || !samples[0].Cost.Clean {
 		t.Fatalf("cost = %+v", samples[0].Cost)
+	}
+}
+
+func TestSQLiteReadsCompactDashboardSamples(t *testing.T) {
+	db, err := OpenSQLite(filepath.Join(t.TempDir(), "bench.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	now := time.Now().UTC()
+	bookSufficient := true
+	err = db.WriteSamples(context.Background(), []SampleRecord{{
+		LatencyMode: bench.LatencyModeTotal,
+		Sample: bench.Sample{
+			Venue:             "mock",
+			RunID:             "run-test",
+			Scenario:          bench.ScenarioBatch,
+			Transport:         "websocket",
+			OrderType:         "post_only",
+			MeasurementMode:   bench.MeasurementModeWSConfirmation,
+			Iteration:         7,
+			BatchSize:         5,
+			NetworkNS:         3_000_000,
+			RawNetworkNS:      4_000_000,
+			AdjustedNetworkNS: 2_000_000,
+			NetworkFloorNS:    500_000,
+			SpeedBumpNS:       1_000_000,
+			SubmissionNS:      900_000,
+			OK:                true,
+			Classification:    lifecycle.Classification{Status: lifecycle.StatusAccepted},
+			Cleanup: &bench.CleanupResult{
+				Attempted:   true,
+				OK:          true,
+				DurationNS:  1_200_000,
+				Description: "cancel mock benchmark orders",
+				Metadata: map[string]any{
+					bench.CleanupConfirmationMetadataKey: bench.CleanupConfirmationAccountFeed,
+					"large_debug_payload":                strings.Repeat("x", 1024),
+				},
+			},
+			ExpectedEntryFill: &bench.ExpectedFill{
+				Side:           "buy",
+				ExpectedPrice:  100_000,
+				BookSufficient: &bookSufficient,
+				TopSufficient:  false,
+			},
+			Metadata: map[string]any{
+				"native_batch_endpoint": false,
+				"large_debug_payload":   strings.Repeat("y", 1024),
+			},
+			CompletedAt: now,
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.WriteSampleCosts(context.Background(), []bench.SampleCost{{
+		Venue:        "mock",
+		RunID:        "run-test",
+		CompletedAt:  now,
+		EntryQty:     0.001,
+		ExitQty:      0.001,
+		TradeCostUSD: 0.02,
+		Clean:        true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	model, err := db.RecentDashboardSamples(context.Background(), now.Add(-time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(model.Samples) != 1 {
+		t.Fatalf("len(samples) = %d", len(model.Samples))
+	}
+	sample := model.Samples[0]
+	if sample.BatchSubmission != "manual" || sample.Cleanup == nil || sample.Cleanup.CleanupConfirmation != bench.CleanupConfirmationAccountFeed {
+		t.Fatalf("sample projection = %+v cleanup=%+v", sample, sample.Cleanup)
+	}
+	if sample.ExpectedEntryFill == nil || sample.ExpectedEntryFill.ExpectedPrice != 100_000 || sample.ExpectedEntryFill.BookSufficient == nil || !*sample.ExpectedEntryFill.BookSufficient {
+		t.Fatalf("expected fill = %+v", sample.ExpectedEntryFill)
+	}
+	if sample.Cost == nil || sample.Cost.TradeCostUSD != 0.02 || !sample.Cost.Clean {
+		t.Fatalf("cost = %+v", sample.Cost)
+	}
+	encoded, err := json.Marshal(model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "large_debug_payload") || strings.Contains(string(encoded), "metadata") || strings.Contains(string(encoded), "balance_before") || strings.Contains(string(encoded), "trace") {
+		t.Fatalf("dashboard model leaked raw sample data: %s", encoded)
+	}
+
+	latencyModel, err := db.RecentDashboardLatencySeries(context.Background(), now.Add(-time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(latencyModel.Samples) != 1 {
+		t.Fatalf("len(latency samples) = %d", len(latencyModel.Samples))
+	}
+	latencySample := latencyModel.Samples[0]
+	if latencySample.ConfirmNS != 2_000_000 || latencySample.CleanupConfirmNS != 1_200_000 || !latencySample.CleanupAccountFeed {
+		t.Fatalf("latency projection = %+v", latencySample)
+	}
+	if latencySample.BatchSubmission != "manual" || !latencySample.PlotAt.Equal(now) {
+		t.Fatalf("latency timing/batch projection = %+v", latencySample)
+	}
+	encoded, err = json.Marshal(latencyModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "large_debug_payload") || strings.Contains(string(encoded), "metadata") || strings.Contains(string(encoded), "description") || strings.Contains(string(encoded), "trace") {
+		t.Fatalf("latency model leaked raw sample data: %s", encoded)
+	}
+
+	takerCostModel, err := db.RecentDashboardTakerCostSamples(context.Background(), now.Add(-time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(takerCostModel.Samples) != 1 {
+		t.Fatalf("len(taker cost samples) = %d", len(takerCostModel.Samples))
+	}
+	takerCostSample := takerCostModel.Samples[0]
+	if takerCostSample.Cost.TradeCostUSD != 0.02 || !takerCostSample.Cost.Clean {
+		t.Fatalf("taker cost projection = %+v", takerCostSample.Cost)
+	}
+	if takerCostSample.ExpectedEntryFill == nil || takerCostSample.ExpectedEntryFill.ExpectedPrice != 100_000 {
+		t.Fatalf("taker expected fill = %+v", takerCostSample.ExpectedEntryFill)
+	}
+	encoded, err = json.Marshal(takerCostModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "large_debug_payload") || strings.Contains(string(encoded), "metadata") || strings.Contains(string(encoded), "balance_before") || strings.Contains(string(encoded), "trace") {
+		t.Fatalf("taker cost model leaked raw sample data: %s", encoded)
 	}
 }
 
