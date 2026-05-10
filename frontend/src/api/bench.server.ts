@@ -240,6 +240,18 @@ function filterBenchJSON(path: string, data: unknown) {
     }
   }
 
+  if (path.startsWith("/api/exchange-tps?")) {
+    return {
+      ...data,
+      series: Array.isArray(data.series)
+        ? data.series.filter((row) => isVisibleVenueRow(row, hiddenVenues))
+        : data.series,
+      sources: Array.isArray(data.sources)
+        ? data.sources.filter((row) => isVisibleVenueRow(row, hiddenVenues))
+        : data.sources,
+    }
+  }
+
   return data
 }
 

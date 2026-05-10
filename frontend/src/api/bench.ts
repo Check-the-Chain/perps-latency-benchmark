@@ -62,6 +62,38 @@ export interface SamplesResponse {
   samples: Array<Sample>
 }
 
+export interface ExchangeTPSResponse {
+  updated_at: string
+  bucket: ExchangeTPSBucket
+  window: string
+  series: Array<ExchangeTPSRow>
+  sources: Array<ExchangeTPSSource>
+}
+
+export interface ExchangeTPSRow {
+  venue: string
+  bucket_start: string
+  bucket_seconds: number
+  complete: boolean
+  tx_count: number
+  block_count?: number
+  order_count?: number
+  place_count?: number
+  cancel_count?: number
+  error_count?: number
+  tps: number
+  orders_per_second?: number
+  source_quality: string
+}
+
+export interface ExchangeTPSSource {
+  venue: string
+  quality: string
+  bucket_seconds: number
+  description: string
+  updated_at: number
+}
+
 export interface CleanupResult {
   attempted?: boolean
   ok: boolean
@@ -181,8 +213,11 @@ export interface Sample {
 
 export const WINDOW_OPTIONS = ["6h", "12h", "24h"] as const
 export const DEFAULT_WINDOW = "12h" satisfies WindowOption
+export const EXCHANGE_TPS_BUCKETS = ["1m", "1h"] as const
+export const DEFAULT_EXCHANGE_TPS_BUCKET = "1m" satisfies ExchangeTPSBucket
 
 export type WindowOption = (typeof WINDOW_OPTIONS)[number]
+export type ExchangeTPSBucket = (typeof EXCHANGE_TPS_BUCKETS)[number]
 
 export function isWindowOption(value: string): value is WindowOption {
   return WINDOW_OPTIONS.includes(value as WindowOption)
@@ -237,6 +272,22 @@ export function takerCostSeriesQueryOptions(window: WindowOption) {
     queryFn: () =>
       fetchJSON<SamplesResponse>(
         `/api/bench/taker-cost-series?window=${window}&limit=10000`
+      ),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+    staleTime: 20_000,
+  })
+}
+
+export function exchangeTPSQueryOptions(
+  window: WindowOption,
+  bucket: ExchangeTPSBucket = DEFAULT_EXCHANGE_TPS_BUCKET
+) {
+  return queryOptions({
+    queryKey: ["bench-exchange-tps", window, bucket],
+    queryFn: () =>
+      fetchJSON<ExchangeTPSResponse>(
+        `/api/bench/exchange-tps?window=${window}&bucket=${bucket}&limit=20000`
       ),
     refetchInterval: 30_000,
     refetchOnWindowFocus: false,

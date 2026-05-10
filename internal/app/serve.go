@@ -15,15 +15,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"perps-latency-benchmark/internal/store"
+	"perps-latency-benchmark/internal/exchangetps"
+	benchstore "perps-latency-benchmark/internal/store"
 )
 
 type serveOptions struct {
-	storePath       string
-	listen          string
-	corsOrigin      string
-	authUser        string
-	authPasswordEnv string
+	storePath        string
+	exchangeTPSStore string
+	listen           string
+	corsOrigin       string
+	authUser         string
+	authPasswordEnv  string
 }
 
 func newServeCommand() *cobra.Command {
@@ -36,6 +38,7 @@ func newServeCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.storePath, "store", "data/bench.db", "SQLite result store path.")
+	cmd.Flags().StringVar(&opts.exchangeTPSStore, "exchange-tps-store", "data/exchange_tps.db", "SQLite exchange TPS store path.")
 	cmd.Flags().StringVar(&opts.listen, "listen", "127.0.0.1:8080", "HTTP listen address.")
 	cmd.Flags().StringVar(&opts.corsOrigin, "cors-origin", "*", "CORS Access-Control-Allow-Origin for API responses.")
 	cmd.Flags().StringVar(&opts.authUser, "auth-user", "bench", "Basic auth username when auth is enabled.")
@@ -49,11 +52,16 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 		return fmt.Errorf("serving on %s requires %s to be set", opts.listen, opts.authPasswordEnv)
 	}
 
-	db, err := store.OpenSQLite(opts.storePath)
+	db, err := benchstore.OpenSQLite(opts.storePath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+	exchangeTPSDB, err := exchangetps.OpenStore(opts.exchangeTPSStore)
+	if err != nil {
+		return err
+	}
+	defer exchangeTPSDB.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", withCORS(opts.corsOrigin, func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +111,21 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 		window := queryDuration(r, "window", time.Hour)
 		limit := queryInt(r, "limit", 500)
 		model, err := db.RecentDashboardTakerCostSamples(r.Context(), time.Now().Add(-window), limit)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, model)
+	}))
+	mux.HandleFunc("/api/exchange-tps", withCORS(opts.corsOrigin, func(w http.ResponseWriter, r *http.Request) {
+		window := queryDuration(r, "window", 12*time.Hour)
+		bucket, err := exchangetps.ParseSeriesBucket(r.URL.Query().Get("bucket"))
+		if err != nil {
+			writeStatusError(w, err, http.StatusBadRequest)
+			return
+		}
+		limit := queryInt(r, "limit", 10000)
+		model, err := exchangeTPSDB.RecentSeries(r.Context(), bucket, time.Now().Add(-window), limit)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -216,5 +239,11 @@ func writeJSON(w http.ResponseWriter, value any) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+	writeStatusError(w, err, http.StatusInternalServerError)
+}
+
+func writeStatusError(w http.ResponseWriter, err error, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
