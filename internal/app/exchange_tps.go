@@ -14,14 +14,15 @@ import (
 )
 
 type exchangeTPSOptions struct {
-	venue           string
-	storePath       string
-	minuteRetention time.Duration
-	asterWSURL      string
-	lighterURL      string
-	flushInterval   time.Duration
-	pollInterval    time.Duration
-	runFor          time.Duration
+	venue            string
+	storePath        string
+	minuteRetention  time.Duration
+	asterWSURL       string
+	hyperliquidWSURL string
+	lighterURL       string
+	flushInterval    time.Duration
+	pollInterval     time.Duration
+	runFor           time.Duration
 }
 
 func newCollectExchangeTPSCommand() *cobra.Command {
@@ -33,10 +34,11 @@ func newCollectExchangeTPSCommand() *cobra.Command {
 			return runExchangeTPSCollector(cmd.Context(), opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.venue, "venue", "aster", "Exchange to collect. Supported: aster, lighter.")
+	cmd.Flags().StringVar(&opts.venue, "venue", "aster", "Exchange to collect. Supported: aster, hyperliquid, lighter.")
 	cmd.Flags().StringVar(&opts.storePath, "store", "data/exchange_tps.db", "SQLite path for compact exchange TPS buckets.")
 	cmd.Flags().DurationVar(&opts.minuteRetention, "minute-retention", 365*24*time.Hour, "Retention for 1m bucket table. 1h rollups are retained.")
 	cmd.Flags().StringVar(&opts.asterWSURL, "aster-ws-url", exchangetps.DefaultAsterWSURL, "Aster explorer WebSocket URL.")
+	cmd.Flags().StringVar(&opts.hyperliquidWSURL, "hyperliquid-ws-url", exchangetps.DefaultHyperliquidWSURL, "Hyperliquid explorer WebSocket URL.")
 	cmd.Flags().StringVar(&opts.lighterURL, "lighter-metrics-url", exchangetps.DefaultLighterMetricsURL, "Lighter exchangeMetrics URL.")
 	cmd.Flags().DurationVar(&opts.flushInterval, "flush-interval", time.Second, "How often to flush finalized buckets.")
 	cmd.Flags().DurationVar(&opts.pollInterval, "poll-interval", time.Minute, "How often to poll HTTP metric sources.")
@@ -57,13 +59,14 @@ func runExchangeTPSCollector(ctx context.Context, opts *exchangeTPSOptions) erro
 	}
 
 	err := exchangetps.RunCollector(runCtx, exchangetps.RunnerConfig{
-		Venue:           opts.venue,
-		StorePath:       opts.storePath,
-		MinuteRetention: opts.minuteRetention,
-		AsterWSURL:      opts.asterWSURL,
-		LighterURL:      opts.lighterURL,
-		FlushInterval:   opts.flushInterval,
-		PollInterval:    opts.pollInterval,
+		Venue:            opts.venue,
+		StorePath:        opts.storePath,
+		MinuteRetention:  opts.minuteRetention,
+		AsterWSURL:       opts.asterWSURL,
+		HyperliquidWSURL: opts.hyperliquidWSURL,
+		LighterURL:       opts.lighterURL,
+		FlushInterval:    opts.flushInterval,
+		PollInterval:     opts.pollInterval,
 	})
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		err = nil

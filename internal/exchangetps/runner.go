@@ -13,13 +13,14 @@ type Collector interface {
 }
 
 type RunnerConfig struct {
-	Venue           string
-	StorePath       string
-	MinuteRetention time.Duration
-	AsterWSURL      string
-	LighterURL      string
-	FlushInterval   time.Duration
-	PollInterval    time.Duration
+	Venue            string
+	StorePath        string
+	MinuteRetention  time.Duration
+	AsterWSURL       string
+	HyperliquidWSURL string
+	LighterURL       string
+	FlushInterval    time.Duration
+	PollInterval     time.Duration
 }
 
 func RunCollector(ctx context.Context, cfg RunnerConfig) error {
@@ -59,6 +60,12 @@ func NewCollector(venue string, cfg RunnerConfig) (Collector, error) {
 		return &LighterCollector{
 			MetricsURL:   cfg.LighterURL,
 			PollInterval: cfg.PollInterval,
+		}, nil
+	case "hyperliquid":
+		return &HyperliquidCollector{
+			WSURL:         cfg.HyperliquidWSURL,
+			FlushInterval: cfg.FlushInterval,
+			Aggregator:    NewAggregator("hyperliquid", time.Minute),
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported exchange TPS venue %q", venue)
