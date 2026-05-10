@@ -30,6 +30,13 @@ func (a *Aggregator) AddBlock(timestampMs, txCount int64) {
 	a.add(timestampMs, BucketDelta{TxCount: txCount, BlockCount: 1})
 }
 
+func (a *Aggregator) DropBucketAt(t time.Time) {
+	start := a.bucketStart(t.UnixMilli())
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.pending, start.Unix())
+}
+
 func (a *Aggregator) AddTransaction(timestampMs int64, action, errorText string) {
 	delta := BucketDelta{}
 	if IsOrderAction(action) {

@@ -20,9 +20,10 @@ type HyperliquidCollector struct {
 	FlushInterval time.Duration
 	Aggregator    *Aggregator
 
-	mu         sync.Mutex
-	seen       map[int64]struct{}
-	lastHeight int64
+	mu                  sync.Mutex
+	seen                map[int64]struct{}
+	lastHeight          int64
+	ignoreThroughBucket int64
 }
 
 type hyperliquidBlock struct {
@@ -92,7 +93,7 @@ func (c *HyperliquidCollector) Run(ctx context.Context, store *Store) error {
 			backoff *= 2
 		}
 	}
-	if err := c.Aggregator.Flush(context.Background(), store, true); err != nil {
+	if err := c.Aggregator.Flush(context.Background(), store, false); err != nil {
 		return err
 	}
 	return ctx.Err()
@@ -120,6 +121,8 @@ func (c *HyperliquidCollector) runSession(ctx context.Context, wsURL string) err
 		return err
 	}
 	log.Printf("hyperliquid tps collector connected to %s", wsURL)
+	c.ignoreCurrentSessionStartBucket()
+	defer c.Aggregator.DropBucketAt(time.Now().UTC())
 	for ctx.Err() == nil {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
@@ -152,6 +155,25 @@ func (c *HyperliquidCollector) acceptHeight(height int64) (int64, bool, bool) {
 		c.pruneSeenLocked()
 	}
 	return last, gap, true
+}
+
+func (c *HyperliquidCollector) ignoreCurrentSessionStartBucket() {
+	bucketUnix := time.Now().UTC().Truncate(time.Minute).Unix()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if bucketUnix > c.ignoreThroughBucket {
+		c.ignoreThroughBucket = bucketUnix
+	}
+}
+
+func (c *HyperliquidCollector) shouldIgnoreBlock(timestampMs int64) bool {
+	if timestampMs <= 0 {
+		return true
+	}
+	bucketUnix := time.Unix(floorUnix(time.UnixMilli(timestampMs).UTC().Unix(), 60), 0).UTC().Unix()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return bucketUnix <= c.ignoreThroughBucket
 }
 
 func (c *HyperliquidCollector) pruneSeenLocked() {
@@ -197,6 +219,9 @@ func (c *HyperliquidCollector) handleBlocks(data []byte) error {
 		blocks = []hyperliquidBlock{block}
 	}
 	for _, block := range blocks {
+		if c.shouldIgnoreBlock(block.BlockTime) {
+			continue
+		}
 		lastHeight, gap, accepted := c.acceptHeight(block.Height)
 		if !accepted {
 			continue

@@ -52,3 +52,18 @@ WHERE venues.code = 'hyperliquid' AND tps_1m.t = ?
 		t.Fatalf("unexpected bucket counts: tx=%d blocks=%d", txCount, blockCount)
 	}
 }
+
+func TestHyperliquidCollectorSkipsSessionStartBucket(t *testing.T) {
+	collector := &HyperliquidCollector{
+		Aggregator: NewAggregator("hyperliquid", time.Minute),
+	}
+	now := time.Now().UTC()
+	collector.ignoreThroughBucket = now.Truncate(time.Minute).Unix()
+
+	if !collector.shouldIgnoreBlock(now.UnixMilli()) {
+		t.Fatal("current session bucket should be ignored")
+	}
+	if collector.shouldIgnoreBlock(now.Add(time.Minute).UnixMilli()) {
+		t.Fatal("next full bucket should not be ignored")
+	}
+}
