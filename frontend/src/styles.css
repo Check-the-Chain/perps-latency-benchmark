@@ -80,6 +80,10 @@
     background: var(--background);
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   button,
   select {
     font: inherit;

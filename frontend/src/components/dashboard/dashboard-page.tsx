@@ -46,6 +46,19 @@ const HIDDEN_FRONTEND_VENUES = new Set(["edgex"])
 const GITHUB_URL = "https://github.com/Check-the-Chain/perps-latency-benchmark"
 type CancelChartScenario = "single" | "batch"
 
+const NAV_ITEMS = [
+  { href: "#summary", label: "Summary" },
+  { href: "#results", label: "Results" },
+  { href: "#post-only", label: "Post-only" },
+  { href: "#batch-post-only", label: "Batch" },
+  { href: "#cancel", label: "Cancel" },
+  { href: "#transactions-per-second", label: "TPS" },
+  { href: "#taker", label: "Taker" },
+  { href: "#costs", label: "Costs" },
+  { href: "#infrastructure", label: "Infra" },
+  { href: "#methodology", label: "Methodology" },
+] as const
+
 export function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
     subtractNetworkFloor: false,
@@ -128,13 +141,14 @@ export function DashboardPage() {
       ),
     [exchangeTPS.data?.series, filters.venues]
   )
-  const exchangeTPSSources = useMemo(
+  const exchangeTPSVenues = useMemo(
     () =>
-      (exchangeTPS.data?.sources ?? []).filter(
-        (source) =>
-          isVisibleVenue(source.venue) && matchesVenue(filters.venues, source.venue)
+      uniqueSorted(
+        (exchangeTPS.data?.sources ?? [])
+          .map((source) => source.venue)
+          .filter(isVisibleVenue)
       ),
-    [exchangeTPS.data?.sources, filters.venues]
+    [exchangeTPS.data?.sources]
   )
   const cancelSamples =
     cancelChartScenario === "batch" ? batchPostOnlySamples : postOnlySamples
@@ -169,7 +183,10 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-3">
-      <section className="rounded-sm border border-border/80 bg-surface-1 p-3">
+      <section
+        id="summary"
+        className="scroll-mt-16 rounded-sm border border-border/80 bg-surface-1 p-3"
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="font-sans text-lg font-semibold">
@@ -232,7 +249,9 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2">
+      <DashboardNav />
+
+      <section className="grid scroll-mt-16 gap-3 md:grid-cols-2">
         <MetricCard
           label="Best post-only p95"
           value={formatLatency(stats.fastestPostOnlyP95 ? confirmP95(stats.fastestPostOnlyP95, filters.subtractNetworkFloor) : undefined)}
@@ -247,91 +266,136 @@ export function DashboardPage() {
         />
       </section>
 
-      <LatencyTable
-        isLoading={isLatestLoading}
-        rows={filteredSummaries}
-        subtractNetworkFloor={filters.subtractNetworkFloor}
-      />
-      <InfrastructurePanel />
-      <ExchangeTPSPanel
-        isLoading={isExchangeTPSLoading}
-        rows={exchangeTPSRows}
-        sources={exchangeTPSSources}
-      />
-      <LatencyTimeseriesChart
-        title="Post-only Confirmation"
-        description="How quickly a resting order is confirmed as placed."
-        isLoading={isLatencySeriesLoading}
-        samples={postOnlySamples}
-        scaleMode={chartScale}
-        selectedVenues={selectedVenueList(filters.venues, postOnlyVenues)}
-        venues={postOnlyVenues}
-        valueForSample={confirmationValueForSample}
-        onScaleModeChange={setChartScale}
-        onVenueSelectionChange={(venues) =>
-          setFilters((current) => ({ ...current, venues }))
-        }
-      />
-      <LatencyTimeseriesChart
-        title="Batch Post-only Confirmation"
-        description="Five post-only orders per sample. Native batch venues are labeled separately from manual fanout venues that send concurrent single-order requests."
-        isLoading={isLatencySeriesLoading}
-        samples={batchPostOnlySamples}
-        scaleMode={chartScale}
-        selectedVenues={selectedVenueList(filters.venues, batchPostOnlyVenues)}
-        venues={batchPostOnlyVenues}
-        valueForSample={confirmationValueForSample}
-        onScaleModeChange={setChartScale}
-        onVenueSelectionChange={(venues) =>
-          setFilters((current) => ({ ...current, venues }))
-        }
-      />
-      <LatencyTimeseriesChart
-        title="Cancel Confirmation"
-        description={
-          cancelChartScenario === "batch"
-            ? "Five post-only cleanup cancels per sample, measured when every cancel is confirmed through the account feed."
-            : "Post-only cleanup cancel latency, measured when the cancel is confirmed through the account feed."
-        }
-        emptyMessage="No account-feed cancel confirmation data is available for the selected filters."
-        headerActions={
-          <CancelScenarioToggle
-            value={cancelChartScenario}
-            onChange={setCancelChartScenario}
-          />
-        }
-        isLoading={isLatencySeriesLoading}
-        samples={cancelSamples}
-        scaleMode={chartScale}
-        selectedVenues={selectedVenueList(filters.venues, cancelVenues)}
-        venues={cancelVenues}
-        valueForSample={cancelValueForSample}
-        valueLabel="Cancel confirmation"
-        onScaleModeChange={setChartScale}
-        onVenueSelectionChange={(venues) =>
-          setFilters((current) => ({ ...current, venues }))
-        }
-      />
-      <LatencyTimeseriesChart
-        title="Taker Confirmation"
-        description="How quickly a marketable order is confirmed, adjusted for published venue delays."
-        isLoading={isLatencySeriesLoading}
-        samples={takerSamples}
-        scaleMode={chartScale}
-        selectedVenues={selectedVenueList(filters.venues, takerVenues)}
-        venues={takerVenues}
-        valueForSample={confirmationValueForSample}
-        onScaleModeChange={setChartScale}
-        onVenueSelectionChange={(venues) =>
-          setFilters((current) => ({ ...current, venues }))
-        }
-      />
-      <TakerCostPanel
-        isLoading={isTakerCostSeriesLoading}
-        samples={takerCostSamples}
-      />
-      <MethodologyPanel />
+      <section id="results" className="scroll-mt-16">
+        <LatencyTable
+          isLoading={isLatestLoading}
+          rows={filteredSummaries}
+          subtractNetworkFloor={filters.subtractNetworkFloor}
+        />
+      </section>
+      <section id="post-only" className="scroll-mt-16">
+        <LatencyTimeseriesChart
+          title="Post-only Confirmation"
+          description="How quickly a resting order is confirmed as placed."
+          isLoading={isLatencySeriesLoading}
+          samples={postOnlySamples}
+          scaleMode={chartScale}
+          selectedVenues={selectedVenueList(filters.venues, postOnlyVenues)}
+          venues={postOnlyVenues}
+          valueForSample={confirmationValueForSample}
+          onScaleModeChange={setChartScale}
+          onVenueSelectionChange={(venues) =>
+            setFilters((current) => ({ ...current, venues }))
+          }
+        />
+      </section>
+      <section id="batch-post-only" className="scroll-mt-16">
+        <LatencyTimeseriesChart
+          title="Batch Post-only Confirmation"
+          description="Five post-only orders per sample. Native batch venues are labeled separately from manual fanout venues that send concurrent single-order requests."
+          isLoading={isLatencySeriesLoading}
+          samples={batchPostOnlySamples}
+          scaleMode={chartScale}
+          selectedVenues={selectedVenueList(filters.venues, batchPostOnlyVenues)}
+          venues={batchPostOnlyVenues}
+          valueForSample={confirmationValueForSample}
+          onScaleModeChange={setChartScale}
+          onVenueSelectionChange={(venues) =>
+            setFilters((current) => ({ ...current, venues }))
+          }
+        />
+      </section>
+      <section id="cancel" className="scroll-mt-16">
+        <LatencyTimeseriesChart
+          title="Cancel Confirmation"
+          description={
+            cancelChartScenario === "batch"
+              ? "Five post-only cleanup cancels per sample, measured when every cancel is confirmed through the account feed."
+              : "Post-only cleanup cancel latency, measured when the cancel is confirmed through the account feed."
+          }
+          emptyMessage="No account-feed cancel confirmation data is available for the selected filters."
+          headerActions={
+            <CancelScenarioToggle
+              value={cancelChartScenario}
+              onChange={setCancelChartScenario}
+            />
+          }
+          isLoading={isLatencySeriesLoading}
+          samples={cancelSamples}
+          scaleMode={chartScale}
+          selectedVenues={selectedVenueList(filters.venues, cancelVenues)}
+          venues={cancelVenues}
+          valueForSample={cancelValueForSample}
+          valueLabel="Cancel confirmation"
+          onScaleModeChange={setChartScale}
+          onVenueSelectionChange={(venues) =>
+            setFilters((current) => ({ ...current, venues }))
+          }
+        />
+      </section>
+      <section id="transactions-per-second" className="scroll-mt-16">
+        <ExchangeTPSPanel
+          isLoading={isExchangeTPSLoading}
+          scaleMode={chartScale}
+          selectedVenues={selectedVenueList(filters.venues, exchangeTPSVenues)}
+          rows={exchangeTPSRows}
+          venues={exchangeTPSVenues}
+          onScaleModeChange={setChartScale}
+          onVenueSelectionChange={(venues) =>
+            setFilters((current) => ({ ...current, venues }))
+          }
+        />
+      </section>
+      <section id="taker" className="scroll-mt-16">
+        <LatencyTimeseriesChart
+          title="Taker Confirmation"
+          description="How quickly a marketable order is confirmed, adjusted for published venue delays."
+          isLoading={isLatencySeriesLoading}
+          samples={takerSamples}
+          scaleMode={chartScale}
+          selectedVenues={selectedVenueList(filters.venues, takerVenues)}
+          venues={takerVenues}
+          valueForSample={confirmationValueForSample}
+          onScaleModeChange={setChartScale}
+          onVenueSelectionChange={(venues) =>
+            setFilters((current) => ({ ...current, venues }))
+          }
+        />
+      </section>
+      <section id="costs" className="scroll-mt-16">
+        <TakerCostPanel
+          isLoading={isTakerCostSeriesLoading}
+          samples={takerCostSamples}
+        />
+      </section>
+      <section id="infrastructure" className="scroll-mt-16">
+        <InfrastructurePanel />
+      </section>
+      <section id="methodology" className="scroll-mt-16">
+        <MethodologyPanel />
+      </section>
     </div>
+  )
+}
+
+function DashboardNav() {
+  return (
+    <nav
+      aria-label="Dashboard sections"
+      className="sticky top-0 z-20 overflow-x-auto rounded-sm border border-border/80 bg-background/95 px-2 py-2 backdrop-blur"
+    >
+      <div className="flex min-w-max items-center gap-1">
+        {NAV_ITEMS.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            className="inline-flex h-7 items-center rounded-sm px-2.5 text-[11px] text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
+    </nav>
   )
 }
 
