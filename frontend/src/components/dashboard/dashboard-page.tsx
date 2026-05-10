@@ -6,6 +6,7 @@ import { useMemo, useState } from "react"
 
 import {
   DEFAULT_WINDOW,
+  exchangeTPSQueryOptions,
   healthQueryOptions,
   latencySeriesQueryOptions,
   latestQueryOptions,
@@ -21,6 +22,7 @@ import {
   DashboardFilterBar,
   type DashboardFilters,
 } from "@/components/dashboard/filters"
+import { ExchangeTPSPanel } from "@/components/dashboard/exchange-tps-panel"
 import { InfrastructurePanel } from "@/components/dashboard/infrastructure-panel"
 import { LatencyTable } from "@/components/dashboard/latency-table"
 import { MethodologyPanel } from "@/components/dashboard/methodology-panel"
@@ -58,10 +60,12 @@ export function DashboardPage() {
   const latest = useQuery(latestQueryOptions(filters.window))
   const latencySeries = useQuery(latencySeriesQueryOptions(filters.window))
   const takerCostSeries = useQuery(takerCostSeriesQueryOptions(filters.window))
+  const exchangeTPS = useQuery(exchangeTPSQueryOptions(filters.window))
   const isLatestLoading = latest.isLoading && !latest.data
   const isLatencySeriesLoading = latencySeries.isLoading && !latencySeries.data
   const isTakerCostSeriesLoading =
     takerCostSeries.isLoading && !takerCostSeries.data
+  const isExchangeTPSLoading = exchangeTPS.isLoading && !exchangeTPS.data
   const measurements = latencySeries.data?.samples ?? []
   const costMeasurements = takerCostSeries.data?.samples ?? []
   const visibleMeasurements = useMemo(
@@ -116,6 +120,21 @@ export function DashboardPage() {
   const takerCostSamples = useMemo(
     () => filterSamples(visibleCostMeasurements, filters),
     [filters, visibleCostMeasurements]
+  )
+  const exchangeTPSRows = useMemo(
+    () =>
+      (exchangeTPS.data?.series ?? []).filter(
+        (row) => isVisibleVenue(row.venue) && matchesVenue(filters.venues, row.venue)
+      ),
+    [exchangeTPS.data?.series, filters.venues]
+  )
+  const exchangeTPSSources = useMemo(
+    () =>
+      (exchangeTPS.data?.sources ?? []).filter(
+        (source) =>
+          isVisibleVenue(source.venue) && matchesVenue(filters.venues, source.venue)
+      ),
+    [exchangeTPS.data?.sources, filters.venues]
   )
   const cancelSamples =
     cancelChartScenario === "batch" ? batchPostOnlySamples : postOnlySamples
@@ -201,6 +220,7 @@ export function DashboardPage() {
                 void latest.refetch()
                 void latencySeries.refetch()
                 void takerCostSeries.refetch()
+                void exchangeTPS.refetch()
                 void health.refetch()
               }}
               className="inline-flex h-8 items-center gap-2 rounded-sm border border-border bg-surface-1 px-2 text-[11px] text-foreground"
@@ -233,6 +253,11 @@ export function DashboardPage() {
         subtractNetworkFloor={filters.subtractNetworkFloor}
       />
       <InfrastructurePanel />
+      <ExchangeTPSPanel
+        isLoading={isExchangeTPSLoading}
+        rows={exchangeTPSRows}
+        sources={exchangeTPSSources}
+      />
       <LatencyTimeseriesChart
         title="Post-only Confirmation"
         description="How quickly a resting order is confirmed as placed."
