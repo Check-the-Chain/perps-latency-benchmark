@@ -308,6 +308,53 @@ func TestRecentSeriesReads1mAnd1hLevels(t *testing.T) {
 	}
 }
 
+func TestRecentSeriesHidesLaggingProviderReportedBuckets(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exchange_tps.db")
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC().Truncate(time.Minute)
+	oldBucket := now.Add(-5 * time.Minute)
+	laggingBucket := now.Add(-time.Minute)
+	if err := store.SetSourceMetadata(ctx, SourceMetadata{
+		Venue:         "lighter",
+		Quality:       SourceQualityProviderReported,
+		BucketSeconds: 60,
+		Description:   "provider source",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordObservedBucket1m(ctx, BucketDelta{
+		Venue:       "lighter",
+		BucketStart: oldBucket,
+		TxCount:     600,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordObservedBucket1m(ctx, BucketDelta{
+		Venue:       "lighter",
+		BucketStart: laggingBucket,
+		TxCount:     60,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	series, err := store.RecentSeries(ctx, SeriesBucket1m, now.Add(-10*time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series.Series) != 1 {
+		t.Fatalf("rows = %d, want only finalized provider bucket: %+v", len(series.Series), series.Series)
+	}
+	if !series.Series[0].BucketStart.Equal(oldBucket) || series.Series[0].TxCount != 600 {
+		t.Fatalf("unexpected row: %+v", series.Series[0])
+	}
+}
+
 func TestActionClassification(t *testing.T) {
 	for _, action := range []string{"PlaceOrder", "PlaceStrategy", "CancelOrder", "CancelOrders", "CountdownCancelAll"} {
 		if !IsOrderAction(action) {

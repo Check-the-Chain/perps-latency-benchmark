@@ -13,6 +13,8 @@ const (
 	SeriesBucket1h SeriesBucket = "1h"
 )
 
+const providerReportedFinalityDelay = 2 * time.Minute
+
 type SeriesReadModel struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 	Bucket    string      `json:"bucket"`
@@ -94,7 +96,10 @@ LIMIT ?
 		}
 		row.BucketStart = time.Unix(bucketUnix, 0).UTC()
 		row.BucketSeconds = bucketSeconds
-		row.Complete = !row.BucketStart.Add(time.Duration(bucketSeconds) * time.Second).After(now)
+		row.Complete = seriesBucketFinalized(row.BucketStart, bucketSeconds, now, sourceQuality)
+		if !row.Complete {
+			continue
+		}
 		row.TPS = float64(row.TxCount) / float64(bucketSeconds)
 		if row.OrderCount > 0 {
 			row.OrdersPerSecond = float64(row.OrderCount) / float64(bucketSeconds)
@@ -117,6 +122,19 @@ LIMIT ?
 		Series:    series,
 		Sources:   sources,
 	}, nil
+}
+
+func seriesBucketFinalized(
+	bucketStart time.Time,
+	bucketSeconds int64,
+	now time.Time,
+	sourceQuality SourceQuality,
+) bool {
+	finalAt := bucketStart.Add(time.Duration(bucketSeconds) * time.Second)
+	if sourceQuality == SourceQualityProviderReported {
+		finalAt = finalAt.Add(providerReportedFinalityDelay)
+	}
+	return !finalAt.After(now)
 }
 
 func (s *Store) SourceRows(ctx context.Context) ([]SourceRow, error) {
