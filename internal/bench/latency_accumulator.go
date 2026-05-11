@@ -53,6 +53,10 @@ func (a latencyAccumulator) p99MS() float64 {
 	return a.quantileMS(99)
 }
 
+func (a latencyAccumulator) p999MS() float64 {
+	return a.quantileMS(99.9)
+}
+
 func (a latencyAccumulator) maxMS() float64 {
 	if a.count == 0 {
 		return 0

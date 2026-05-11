@@ -70,7 +70,7 @@ func serveResults(ctx context.Context, opts *serveOptions) error {
 	mux.HandleFunc("/api/latest", withCORS(opts.corsOrigin, func(w http.ResponseWriter, r *http.Request) {
 		window := queryDuration(r, "window", time.Hour)
 		limit := queryInt(r, "limit", 10000)
-		samples, err := db.RecentSamples(r.Context(), time.Now().Add(-window), limit)
+		samples, err := db.RecentSummarySamples(r.Context(), time.Now().Add(-window), limit)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -213,6 +213,9 @@ func queryDuration(r *http.Request, key string, fallback time.Duration) time.Dur
 	value := r.URL.Query().Get(key)
 	if value == "" {
 		return fallback
+	}
+	if strings.EqualFold(value, "all") {
+		return 200 * 365 * 24 * time.Hour
 	}
 	parsed, err := time.ParseDuration(value)
 	if err != nil || parsed <= 0 {

@@ -281,6 +281,26 @@ func TestSQLiteReadsCompactDashboardSamples(t *testing.T) {
 	if sample.Cost == nil || sample.Cost.TradeCostUSD != 0.02 || !sample.Cost.Clean {
 		t.Fatalf("cost = %+v", sample.Cost)
 	}
+	summarySamples, err := db.RecentSummarySamples(context.Background(), now.Add(-time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summarySamples) != 1 {
+		t.Fatalf("len(summary samples) = %d", len(summarySamples))
+	}
+	summarySample := summarySamples[0]
+	if summarySample.NetworkNS != 3_000_000 || summarySample.RawNetworkNS != 4_000_000 || summarySample.AdjustedNetworkNS != 2_000_000 || summarySample.SubmissionNS != 900_000 {
+		t.Fatalf("summary latency projection = %+v", summarySample)
+	}
+	if summarySample.Metadata["native_batch_endpoint"] != false {
+		t.Fatalf("summary batch metadata = %+v", summarySample.Metadata)
+	}
+	if summarySample.Cleanup == nil || summarySample.Cleanup.Metadata[bench.CleanupConfirmationMetadataKey] != bench.CleanupConfirmationAccountFeed {
+		t.Fatalf("summary cleanup projection = %+v", summarySample.Cleanup)
+	}
+	if summarySample.Cost == nil || summarySample.Cost.TradeCostUSD != 0.02 || !summarySample.Cost.Clean {
+		t.Fatalf("summary cost = %+v", summarySample.Cost)
+	}
 	encoded, err := json.Marshal(model)
 	if err != nil {
 		t.Fatal(err)

@@ -29,31 +29,38 @@ type summaryRow struct {
 	P50MS                        float64 `json:"p50_ms"`
 	P95MS                        float64 `json:"p95_ms"`
 	P99MS                        float64 `json:"p99_ms"`
+	P999MS                       float64 `json:"p999_ms"`
 	RawMeanMS                    float64 `json:"raw_mean_ms,omitempty"`
 	RawP50MS                     float64 `json:"raw_p50_ms,omitempty"`
 	RawP95MS                     float64 `json:"raw_p95_ms,omitempty"`
 	RawP99MS                     float64 `json:"raw_p99_ms,omitempty"`
+	RawP999MS                    float64 `json:"raw_p999_ms,omitempty"`
 	NetworkFloorMeanMS           float64 `json:"network_floor_mean_ms,omitempty"`
 	NetworkFloorP50MS            float64 `json:"network_floor_p50_ms,omitempty"`
 	NetworkFloorP95MS            float64 `json:"network_floor_p95_ms,omitempty"`
 	NetworkFloorP99MS            float64 `json:"network_floor_p99_ms,omitempty"`
+	NetworkFloorP999MS           float64 `json:"network_floor_p999_ms,omitempty"`
 	NetworkAdjustedMeanMS        float64 `json:"network_adjusted_mean_ms,omitempty"`
 	NetworkAdjustedP50MS         float64 `json:"network_adjusted_p50_ms,omitempty"`
 	NetworkAdjustedP95MS         float64 `json:"network_adjusted_p95_ms,omitempty"`
 	NetworkAdjustedP99MS         float64 `json:"network_adjusted_p99_ms,omitempty"`
+	NetworkAdjustedP999MS        float64 `json:"network_adjusted_p999_ms,omitempty"`
 	SpeedBumpMS                  float64 `json:"speed_bump_ms,omitempty"`
 	SpeedBumpSource              string  `json:"speed_bump_source,omitempty"`
 	SubmissionP50MS              float64 `json:"submission_p50_ms,omitempty"`
 	SubmissionP95MS              float64 `json:"submission_p95_ms,omitempty"`
 	SubmissionP99MS              float64 `json:"submission_p99_ms,omitempty"`
+	SubmissionP999MS             float64 `json:"submission_p999_ms,omitempty"`
 	CleanupMeanMS                float64 `json:"cleanup_mean_ms,omitempty"`
 	CleanupP50MS                 float64 `json:"cleanup_p50_ms,omitempty"`
 	CleanupP95MS                 float64 `json:"cleanup_p95_ms,omitempty"`
 	CleanupP99MS                 float64 `json:"cleanup_p99_ms,omitempty"`
+	CleanupP999MS                float64 `json:"cleanup_p999_ms,omitempty"`
 	NetworkAdjustedCleanupMeanMS float64 `json:"network_adjusted_cleanup_mean_ms,omitempty"`
 	NetworkAdjustedCleanupP50MS  float64 `json:"network_adjusted_cleanup_p50_ms,omitempty"`
 	NetworkAdjustedCleanupP95MS  float64 `json:"network_adjusted_cleanup_p95_ms,omitempty"`
 	NetworkAdjustedCleanupP99MS  float64 `json:"network_adjusted_cleanup_p99_ms,omitempty"`
+	NetworkAdjustedCleanupP999MS float64 `json:"network_adjusted_cleanup_p999_ms,omitempty"`
 	CleanupOK                    int     `json:"cleanup_ok"`
 	CleanupFail                  int     `json:"cleanup_failed"`
 	CostCount                    int     `json:"cost_count,omitempty"`
@@ -98,31 +105,38 @@ func summarizeGroups(samples []bench.Sample) []summaryRow {
 			P50MS:                        summary.P50MS,
 			P95MS:                        summary.P95MS,
 			P99MS:                        summary.P99MS,
+			P999MS:                       summary.P999MS,
 			RawMeanMS:                    summary.RawMeanMS,
 			RawP50MS:                     summary.RawP50MS,
 			RawP95MS:                     summary.RawP95MS,
 			RawP99MS:                     summary.RawP99MS,
+			RawP999MS:                    summary.RawP999MS,
 			NetworkFloorMeanMS:           summary.NetworkFloorMeanMS,
 			NetworkFloorP50MS:            summary.NetworkFloorP50MS,
 			NetworkFloorP95MS:            summary.NetworkFloorP95MS,
 			NetworkFloorP99MS:            summary.NetworkFloorP99MS,
+			NetworkFloorP999MS:           summary.NetworkFloorP999MS,
 			NetworkAdjustedMeanMS:        summary.NetworkAdjustedMeanMS,
 			NetworkAdjustedP50MS:         summary.NetworkAdjustedP50MS,
 			NetworkAdjustedP95MS:         summary.NetworkAdjustedP95MS,
 			NetworkAdjustedP99MS:         summary.NetworkAdjustedP99MS,
+			NetworkAdjustedP999MS:        summary.NetworkAdjustedP999MS,
 			SpeedBumpMS:                  summary.SpeedBumpMeanMS,
 			SpeedBumpSource:              summary.SpeedBumpSource,
 			SubmissionP50MS:              summary.SubmissionP50MS,
 			SubmissionP95MS:              summary.SubmissionP95MS,
 			SubmissionP99MS:              summary.SubmissionP99MS,
+			SubmissionP999MS:             summary.SubmissionP999MS,
 			CleanupMeanMS:                summary.CleanupMeanMS,
 			CleanupP50MS:                 summary.CleanupP50MS,
 			CleanupP95MS:                 summary.CleanupP95MS,
 			CleanupP99MS:                 summary.CleanupP99MS,
+			CleanupP999MS:                summary.CleanupP999MS,
 			NetworkAdjustedCleanupMeanMS: summary.NetworkAdjustedCleanupMeanMS,
 			NetworkAdjustedCleanupP50MS:  summary.NetworkAdjustedCleanupP50MS,
 			NetworkAdjustedCleanupP95MS:  summary.NetworkAdjustedCleanupP95MS,
 			NetworkAdjustedCleanupP99MS:  summary.NetworkAdjustedCleanupP99MS,
+			NetworkAdjustedCleanupP999MS: summary.NetworkAdjustedCleanupP999MS,
 			CleanupOK:                    summary.Cleanup.OK,
 			CleanupFail:                  summary.Cleanup.Failed,
 			CostCount:                    costCount,

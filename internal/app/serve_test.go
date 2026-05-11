@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestServeAuthRequiredForNonLoopbackListen(t *testing.T) {
@@ -34,6 +35,14 @@ func TestServeAuthListenClassification(t *testing.T) {
 		if got := requiresServeAuth(listen); got != want {
 			t.Fatalf("requiresServeAuth(%q) = %v, want %v", listen, got, want)
 		}
+	}
+}
+
+func TestQueryDurationSupportsAllWindow(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/latest?window=all", nil)
+	got := queryDuration(req, "window", time.Hour)
+	if got <= 100*365*24*time.Hour {
+		t.Fatalf("queryDuration(all) = %s, want effectively all history", got)
 	}
 }
 
