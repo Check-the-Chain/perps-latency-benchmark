@@ -16,6 +16,7 @@ Recommended layout:
 - `.env.pacifica.local`: Pacifica credentials.
 - `.env.nado.local`: Nado credentials.
 - `.env.nado-direct.local`: Nado direct-backend runner credentials.
+- `.env.risex.local`: RISEx credentials.
 
 The matching `.env.*.example` files are committed as templates. Local dotenv
 files are ignored by git.
@@ -256,3 +257,25 @@ The direct-backend runner is configured as `nado_direct` in
 `examples/nado-direct-builder.json`. It uses
 `https://prod-mm.nado-backend.xyz/execute` for REST fallback/cleanup and
 `wss://prod-mm.nado-backend.xyz/ws/v2` for Gateway WebSocket submission.
+
+RISEx:
+
+```bash
+RISEX_PRIVATE_KEY=
+# or, if you don't have/want to export the main account's raw key (e.g. a
+# hardware wallet, or a signer already registered through RISEx's website UI):
+RISEX_ACCOUNT_ADDRESS=
+RISEX_SIGNER_PRIVATE_KEY=
+```
+
+RISEx order submission is REST-only (`POST /v1/orders/place`; RISEx has no
+documented WebSocket order-entry endpoint). Auth is EIP-712 permit-based
+session-key delegation, not a raw wallet signature: the main account holds
+collateral (set its raw key as `RISEX_PRIVATE_KEY`, or just its address as
+`RISEX_ACCOUNT_ADDRESS` if you don't have/want to export the key), and
+`RISEX_SIGNER_PRIVATE_KEY` is a separately generated session signer key that
+must be registered on-chain before it can sign order permits — run
+`internal/venues/risex/register_signer.py`, or use RISEx's own website UI;
+see `internal/venues/risex/README.md` for the registration flow and other
+caveats. A funded, registered RISEx account is needed for live submit
+tests.

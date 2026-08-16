@@ -181,4 +181,21 @@ var venueSpecs = []VenueSpec{
 			"Run with: go run ./cmd/perps-bench run --config examples/nado-direct-builder.json --env-file .env.nado-direct.local --confirm-live",
 		},
 	},
+	{
+		Name:        "risex",
+		WalletKinds: []WalletKind{WalletEVM},
+		Supported:   true,
+		Env: []EnvVar{
+			{Name: "RISEX_PRIVATE_KEY", Wallet: WalletEVM, Secret: true, Note: "EVM private key for the main RISEx account that holds collateral. Optional if RISEX_ACCOUNT_ADDRESS is set instead: order/cancel placement only ever needs the address (the session signer does the signing); this key is only needed for register_signer.py's one-time on-chain registration step. Not auto-generated here: build_payload.py prefers this key over RISEX_ACCOUNT_ADDRESS whenever both are set, so a fresh generated-but-unfunded key would silently shadow an intended address-only setup."},
+			{Name: "RISEX_ACCOUNT_ADDRESS", Note: "Main RISEx account address. Alternative to RISEX_PRIVATE_KEY when you don't have (or don't want to export) the main account's raw key, e.g. a hardware wallet whose signer was already registered through RISEx's website UI."},
+			{Name: "RISEX_SIGNER_PRIVATE_KEY", Secret: true, Required: true, Note: "EVM private key for the registered RISEx session signer key (RISEx's UI may call this an \"API wallet\"). Must be a different key from RISEX_PRIVATE_KEY and cannot be auto-generated here: registration requires two live EIP-712 signatures posted to POST /v1/auth/register-signer, either via register_signer.py or RISEx's own website UI."},
+		},
+		ManualSteps: []string{
+			"Fund the main account with USDC collateral on RISE mainnet (chain ID 4153) so it registers on first deposit; set RISEX_PRIVATE_KEY if you have its raw key, or RISEX_ACCOUNT_ADDRESS if you only have the address.",
+			"Generate a second EVM key for RISEX_SIGNER_PRIVATE_KEY, then register it as a session signer via POST /v1/auth/register-signer (two EIP-712 signatures: RegisterSigner from the account, VerifySigner from the signer) -- either via register_signer.py or RISEx's website UI.",
+			"Keep the default post-only limit GTC order type: the builder's order_data bit-packing is only verified for that combination (see internal/venues/risex/README.md).",
+			"Verify the mainnet REST/WS hosts (https://api.rise.trade, wss://ws.rise.trade/ws) still match GET /v1/system/config before a live run; RISEx's docs are inconsistent about mainnet hostnames.",
+			"Run with: go run ./cmd/perps-bench run --config examples/risex-builder.json --env-file .env.risex.local --confirm-live",
+		},
+	},
 }

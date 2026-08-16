@@ -1322,5 +1322,6 @@ const KNOWN_VENUE_COLORS: Record<string, string> = {
   lighter_free: "oklch(0.66 0.16 220)",
   nado: "oklch(0.55 0.18 305)",
   nado_direct: "oklch(0.65 0.16 325)",
+  risex: "oklch(0.79 0.19 155)",
   variational_omni: "oklch(0.62 0.15 75)",
 }
