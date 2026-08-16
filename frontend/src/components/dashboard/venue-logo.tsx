@@ -49,6 +49,9 @@ export function formatVenueLabel(value: string) {
   if (value.toLowerCase() === "nado_direct") {
     return "Nado Direct"
   }
+  if (value.toLowerCase() === "risex") {
+    return "RISEx"
+  }
 
   return value
     .split(/[_-]/)
@@ -76,6 +79,8 @@ function LogoMark({ venue }: { venue: string }) {
       return <NadoLogo />
     case "pacifica":
       return <PacificaLogo />
+    case "risex":
+      return <RiseXLogo />
     case "variational_omni":
       return <OmniLogo />
     default:
@@ -107,6 +112,8 @@ function logoSurfaceClass(venue: string) {
       return "border-white/10 bg-[#000000]"
     case "pacifica":
       return "border-[#55C3E9]/20 bg-[#09111B]"
+    case "risex":
+      return "border-[#03DE82]/30 bg-[#03DE82]"
     case "variational_omni":
       return "border-white/10 bg-[#1B2033]"
     default:
@@ -219,6 +226,18 @@ function PacificaLogo() {
       <path d="M803.049 862.401H587.376C587.372 719.873 642.62 582.894 741.51 480.255C840.401 377.615 975.231 317.31 1117.66 312.013C1120.29 311.916 1122.92 312.347 1125.38 313.28C1127.84 314.213 1130.1 315.63 1132 317.447C1133.91 319.264 1135.44 321.445 1136.49 323.86C1137.54 326.275 1138.1 328.877 1138.13 331.511V587.026C1074.57 587.021 1012.97 609.001 963.769 649.238C914.571 689.475 880.805 745.491 868.2 807.786C865.363 823.034 857.312 836.821 845.426 846.784C833.54 856.748 818.559 862.269 803.049 862.401Z" fill="#55C3E9" />
       <path d="M1138.01 802.821V587.026C1280.52 586.99 1417.5 642.213 1520.15 741.084C1622.79 839.955 1683.1 974.772 1688.39 1117.19C1688.53 1119.82 1688.12 1122.45 1687.21 1124.92C1686.3 1127.39 1684.89 1129.65 1683.08 1131.56C1681.27 1133.48 1679.09 1135 1676.67 1136.05C1674.26 1137.1 1671.65 1137.64 1669.02 1137.65H1413.38C1413.38 1074.11 1391.4 1012.53 1351.16 963.35C1310.92 914.172 1254.91 880.43 1192.62 867.85C1177.41 864.996 1163.65 856.956 1153.69 845.1C1143.73 833.243 1138.19 818.303 1138.01 802.821Z" fill="#55C3E9" />
     </svg>
+  )
+}
+
+function RiseXLogo() {
+  return (
+    <img
+      src="/logos/risex.png"
+      alt=""
+      className="size-full object-cover"
+      aria-hidden
+      loading="lazy"
+    />
   )
 }
 

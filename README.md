@@ -321,6 +321,8 @@ network floor" toggle to inspect the optional network-adjusted view.
   private WebSocket confirmation, and cleanup.
 - Pacifica: WebSocket order submission, native WebSocket batch benchmark,
   private WebSocket confirmation, and per-sample WebSocket cleanup.
+- RISEx: HTTPS order submission, private WebSocket confirmation, and
+  cleanup.
 
 ## Troubleshooting
 
