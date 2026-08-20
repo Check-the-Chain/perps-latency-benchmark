@@ -14,6 +14,7 @@ Recommended layout:
 - `.env.extended.local`: Extended credentials.
 - `.env.variational.local`: Variational credentials.
 - `.env.pacifica.local`: Pacifica credentials.
+- `.env.bullet.local`: Bullet credentials.
 - `.env.nado.local`: Nado credentials.
 - `.env.nado-direct.local`: Nado direct-backend runner credentials.
 

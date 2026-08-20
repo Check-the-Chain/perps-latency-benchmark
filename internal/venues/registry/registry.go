@@ -6,6 +6,7 @@ import (
 
 	"perps-latency-benchmark/internal/names"
 	"perps-latency-benchmark/internal/venues/aster"
+	"perps-latency-benchmark/internal/venues/bullet"
 	"perps-latency-benchmark/internal/venues/edgex"
 	"perps-latency-benchmark/internal/venues/extended"
 	"perps-latency-benchmark/internal/venues/grvt"
@@ -19,6 +20,7 @@ import (
 
 var definitions = []spec.Definition{
 	aster.Definition(),
+	bullet.Definition(),
 	edgex.Definition(),
 	extended.Definition(),
 	grvt.Definition(),

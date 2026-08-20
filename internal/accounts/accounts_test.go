@@ -113,3 +113,59 @@ func TestEveryRegisteredVenueHasAccountSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateEd25519WalletProducesSeedAndPublicKey(t *testing.T) {
+	wallet, err := GenerateWallet(WalletEd25519)
+	if err != nil {
+		t.Fatalf("generate ed25519 wallet: %v", err)
+	}
+	if len(wallet.PrivateKey) != 64 {
+		t.Fatalf("private key hex length = %d, want 64 (32-byte seed)", len(wallet.PrivateKey))
+	}
+	if len(wallet.PublicKey) != 64 {
+		t.Fatalf("public key hex length = %d, want 64 (32-byte key)", len(wallet.PublicKey))
+	}
+	if wallet.Kind != WalletEd25519 {
+		t.Fatalf("kind = %q, want %q", wallet.Kind, WalletEd25519)
+	}
+}
+
+func TestBulletSpecGeneratesDelegateKey(t *testing.T) {
+	var spec VenueSpec
+	for _, candidate := range Specs() {
+		if candidate.Name == "bullet" {
+			spec = candidate
+			break
+		}
+	}
+	if spec.Name == "" {
+		t.Fatal("bullet venue spec must exist")
+	}
+	values, wallets, err := Generate([]VenueSpec{spec}, map[string]string{})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if values["BULLET_DELEGATE_PRIVATE_KEY"] == "" {
+		t.Fatal("delegate private key must be generated")
+	}
+	if _, ok := wallets[WalletEd25519]; !ok {
+		t.Fatal("an ed25519 wallet must be generated for bullet")
+	}
+	if _, present := values["BULLET_ACCOUNT_ADDRESS"]; !present {
+		t.Fatal("account address must be present as a blank required value")
+	}
+}
+
+func TestPublicFromEnvDerivesBulletDelegatePublicKey(t *testing.T) {
+	seed := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+	wallet, err := PublicFromEnv(WalletEd25519, map[string]string{"BULLET_DELEGATE_PRIVATE_KEY": seed})
+	if err != nil {
+		t.Fatalf("derive public key: %v", err)
+	}
+	if wallet.PublicKey != "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8" {
+		t.Fatalf("public key = %q, want the known vector for this seed", wallet.PublicKey)
+	}
+	if wallet.PrivateKey != "" {
+		t.Fatal("PublicFromEnv must not leak the private key")
+	}
+}

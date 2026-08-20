@@ -68,6 +68,7 @@ Swap the config file for another configured venue, for example:
 examples/lighter-builder.json
 examples/aster-builder.json
 examples/extended-builder.json
+examples/bullet-builder.json
 ```
 
 The starter configs use small post-only orders. Keep them small until account
@@ -321,6 +322,13 @@ network floor" toggle to inspect the optional network-adjusted view.
   private WebSocket confirmation, and cleanup.
 - Pacifica: WebSocket order submission, native WebSocket batch benchmark,
   private WebSocket confirmation, and per-sample WebSocket cleanup.
+- Bullet: WebSocket order submission, native WebSocket batch benchmark, book-top
+  post-only pricing, cleanup by client order id, and account-feed confirmation.
+  Batch orders are placed in one transaction under a single signature, so batch
+  latency is not directly comparable with venues that sign each batch action
+  individually. The taker config (`bullet-taker-builder.json`) cannot currently
+  run: its fill-likely order profile trips the risk gate pending
+  position-neutralization support for Bullet.
 
 ## Troubleshooting
 

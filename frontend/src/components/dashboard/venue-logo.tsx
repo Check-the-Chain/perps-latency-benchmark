@@ -60,6 +60,8 @@ function LogoMark({ venue }: { venue: string }) {
   switch (venue) {
     case "aster":
       return <AsterLogo />
+    case "bullet":
+      return <LetterLogo label="BU" />
     case "edgex":
       return <EdgeXLogo />
     case "extended":
@@ -91,6 +93,8 @@ function logoSurfaceClass(venue: string) {
   switch (venue) {
     case "aster":
       return "border-white/10 bg-[#050505]"
+    case "bullet":
+      return "border-white/10 bg-[#101010]"
     case "edgex":
       return "border-white/10 bg-[#121212]"
     case "extended":

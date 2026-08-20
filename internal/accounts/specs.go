@@ -165,6 +165,23 @@ var venueSpecs = []VenueSpec{
 		},
 	},
 	{
+		Name:        "bullet",
+		WalletKinds: []WalletKind{WalletEd25519},
+		Supported:   true,
+		Env: []EnvVar{
+			{Name: "BULLET_DELEGATE_PRIVATE_KEY", Wallet: WalletEd25519, Secret: true, Generated: true, Required: true, Note: "Hex-encoded 32-byte ed25519 seed for the Bullet delegate key used to sign transactions."},
+			{Name: "BULLET_ACCOUNT_ADDRESS", Required: true, Note: "Main Bullet account address from the webapp. Used for the user.orders topic and all read endpoints; the delegate address does not work for reads."},
+		},
+		ManualSteps: []string{
+			"Sign in at app.bullet.xyz with your wallet to create the embedded trading account.",
+			"Deposit collateral through the webapp UI.",
+			"Register the printed ed25519 delegate public key in the webapp; delegates can trade but cannot deposit or withdraw.",
+			"Copy the main account address into BULLET_ACCOUNT_ADDRESS. Reads and the user.orders topic key on the main account, not the delegate.",
+			"There is no env var for the REST/WebSocket host. Validate on testnet first at app.testnet.bullet.xyz (funds are airdropped on signup) by running examples/bullet-testnet-builder.json, which points submission, confirmation, and signing at testnet together.",
+			"Run with: go run ./cmd/perps-bench run --config examples/bullet-builder.json --env-file .env.bullet.local --confirm-live",
+		},
+	},
+	{
 		Name:        "nado_direct",
 		WalletKinds: []WalletKind{WalletEVM},
 		Supported:   true,
