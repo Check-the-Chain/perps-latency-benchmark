@@ -76,3 +76,19 @@ func TestValidateRiskAcceptsPostOnlyOrderType(t *testing.T) {
 		t.Fatalf("post-only order type rejected: %v", err)
 	}
 }
+
+func TestFillLikelyDetectsIOCAndFOKEncodedAsOrderType(t *testing.T) {
+	ioc := ProfileFromParams(map[string]any{
+		"order_type": "immediate_or_cancel",
+	})
+	if !FillLikely(ioc) {
+		t.Fatalf("expected order_type=immediate_or_cancel to be fill-likely: %#v", ioc)
+	}
+
+	fok := ProfileFromParams(map[string]any{
+		"order_type": "fill_or_kill",
+	})
+	if !FillLikely(fok) {
+		t.Fatalf("expected order_type=fill_or_kill to be fill-likely: %#v", fok)
+	}
+}
