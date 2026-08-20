@@ -177,7 +177,7 @@ var venueSpecs = []VenueSpec{
 			"Deposit collateral through the webapp UI.",
 			"Register the printed ed25519 delegate public key in the webapp; delegates can trade but cannot deposit or withdraw.",
 			"Copy the main account address into BULLET_ACCOUNT_ADDRESS. Reads and the user.orders topic key on the main account, not the delegate.",
-			"There is no env var for the REST/WebSocket host. Validate on testnet first at app.testnet.bullet.xyz (funds are airdropped on signup) by running examples/bullet-testnet-builder.json, which points submission, confirmation, and signing at testnet together.",
+			"There is no env var for the REST/WebSocket host; the network is selected by the `network` builder param in the run config, alongside the Go-side endpoint.",
 			"Run with: go run ./cmd/perps-bench run --config examples/bullet-builder.json --env-file .env.bullet.local --confirm-live",
 		},
 	},

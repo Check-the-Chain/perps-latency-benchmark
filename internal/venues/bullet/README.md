@@ -37,23 +37,18 @@ Two SDK details worth knowing before editing these files:
   seconds. It happens once per process and is cached, but the builder
   `timeout_ms` in the example configs is raised to 20000 to accommodate it.
 
-## Testnet is currently blocked by SDK schema drift
+## Mainnet only
 
-`@bulletxyz/sdk-wasm@0.0.35` — the latest published release — reports
+This venue ships mainnet configs only. `@bulletxyz/sdk-wasm@0.0.35` fails with
 `Schema outdated - recompile the binary to update bullet-exchange-interface`
-when building a client against **testnet**. Testnet has been upgraded ahead of
-mainnet and the pinned SDK predates that upgrade. Mainnet is unaffected: the
-client builds and signs normally.
+against testnet, which has been upgraded ahead of mainnet and ahead of the
+pinned SDK. Mainnet is unaffected. If you want a testnet config later, take a
+mainnet one, set `"network": "testnet"` and point `request.ws_url` at the
+testnet host — and expect to need an SDK newer than 0.0.35.
 
-So `examples/bullet-testnet-builder.json` will not run until a newer SDK is
-published. The fix is upstream, not here — the SDK monorepo already carries
-commits touching `bullet-exchange-interface` after the 0.0.35 release, so
-cutting a new release should resolve it. The failure mode is a loud error at
-client construction, not a silently malformed transaction, which is the
-behaviour we want.
-
-The network-backed tests in `integration.test.mjs` therefore run against
-mainnet. They only build payloads and never submit, so no order is placed.
+Worth noting the failure mode: the SDK raises at client construction rather
+than emitting a silently malformed transaction, which is the behaviour you
+want from a signing library.
 
 ## Network selection
 
