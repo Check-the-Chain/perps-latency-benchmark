@@ -125,6 +125,7 @@ func Classify(in lifecycle.ResponseInput) lifecycle.Classification {
 		return generic
 	}
 	var decoded struct {
+		// WebSocket order.place / order.cancel envelope.
 		Error *struct {
 			Code int    `json:"code"`
 			Msg  string `json:"msg"`
@@ -133,6 +134,18 @@ func Classify(in lifecycle.ResponseInput) lifecycle.Classification {
 			Status string `json:"status"`
 			TxID   string `json:"tx_id"`
 		} `json:"results"`
+		// HTTP POST /tx/submit returns SubmitTxResponse with id and status at
+		// the top level. `status` is a TxStatus string there, but the flat HTTP
+		// error shape reuses the same key for a numeric HTTP code, so it is
+		// decoded raw and discriminated below.
+		// "id" is deliberately not decoded: the HTTP envelope carries a string
+		// transaction hash while the WebSocket envelope carries a numeric request
+		// id, and a typed field for either breaks unmarshalling of the other.
+		Status  json.RawMessage `json:"status"`
+		Message string          `json:"message"`
+		Receipt *struct {
+			Result string `json:"result"`
+		} `json:"receipt"`
 	}
 	if err := json.Unmarshal(in.Body, &decoded); err != nil {
 		return generic
@@ -143,10 +156,46 @@ func Classify(in lifecycle.ResponseInput) lifecycle.Classification {
 	if decoded.Results != nil {
 		return classifyTxStatus(decoded.Results.Status)
 	}
+	if status, message, ok := httpSubmitOutcome(decoded.Status, decoded.Message); ok {
+		if message != "" {
+			return lifecycle.Classification{Status: lifecycle.StatusRejected, Reason: message}
+		}
+		// A processed transaction can still have reverted or been skipped on
+		// chain, which is a rejection rather than a success.
+		if decoded.Receipt != nil {
+			switch strings.ToLower(strings.TrimSpace(decoded.Receipt.Result)) {
+			case "reverted", "skipped":
+				return lifecycle.Classification{Status: lifecycle.StatusRejected, Reason: "transaction " + decoded.Receipt.Result}
+			}
+		}
+		return classifyTxStatus(status)
+	}
 	if generic.Status == lifecycle.StatusAccepted {
 		return lifecycle.Classification{Status: lifecycle.StatusUnknown, Reason: "bullet response has neither error nor results"}
 	}
 	return generic
+}
+
+// httpSubmitOutcome discriminates the two shapes that reuse the top-level
+// "status" key on POST /tx/submit: a TxStatus string on success, and a numeric
+// HTTP status alongside "message" on failure.
+func httpSubmitOutcome(raw json.RawMessage, message string) (string, string, bool) {
+	if len(raw) == 0 {
+		return "", "", false
+	}
+	var status string
+	if err := json.Unmarshal(raw, &status); err == nil {
+		return status, "", true
+	}
+	var code int
+	if err := json.Unmarshal(raw, &code); err != nil {
+		return "", "", false
+	}
+	reason := strings.TrimSpace(message)
+	if reason == "" {
+		reason = fmt.Sprintf("bullet http %d", code)
+	}
+	return "", reason, true
 }
 
 func classifyError(code int, message string) lifecycle.Classification {

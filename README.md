@@ -6,6 +6,7 @@ Benchmark crypto perps order submission latency.
 
 - Go 1.25+
 - `uv` for live Hyperliquid/Lighter/Extended runs; Python 3 for Aster
+- Node 20+ for live Bullet runs; run `npm ci` in `internal/venues/bullet` first
 - Venue accounts funded and configured before using `--confirm-live`
 
 Long-running services should prefer direct Python interpreters over resident

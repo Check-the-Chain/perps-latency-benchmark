@@ -4,6 +4,7 @@
 // Signing is delegated to the official Bullet WASM SDK, matching build_payload.mjs.
 
 import * as readline from "node:readline";
+import { pathToFileURL } from "node:url";
 import { CancelOrderArgs, RuntimeCall, Transaction, User } from "@bulletxyz/sdk-wasm";
 import { clientFor, envOrParam } from "./build_payload.mjs";
 
@@ -59,9 +60,11 @@ export async function build(req) {
   const marketId = client.marketId(symbol);
   const cancels = ids.map((id) => new CancelOrderArgs(null, BigInt(id)));
 
+  // Uniqueness left to the SDK; see the note in build_payload.mjs. This path
+  // shares the delegate credential with order submission, so a self-supplied
+  // millisecond window could collide with the order it is cancelling.
   const tx = Transaction.builder()
     .call(RuntimeCall.exchange(User.cancelOrders(marketId, cancels)))
-    .window(BigInt(builderParams.uniqueness_ms ?? Date.now()))
     .build(client)
     .toBase64();
 
@@ -89,4 +92,4 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();

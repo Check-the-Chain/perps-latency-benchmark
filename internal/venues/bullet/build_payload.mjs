@@ -8,6 +8,7 @@
 
 import { createHash } from "node:crypto";
 import * as readline from "node:readline";
+import { pathToFileURL } from "node:url";
 import {
   Client, Keypair, NewOrderArgs, OrderType, RuntimeCall, Side, Transaction, User,
 } from "@bulletxyz/sdk-wasm";
@@ -128,12 +129,13 @@ export async function build(req) {
     ));
   }
 
-  // Window uniqueness (not the builder's default generation): Bullet documents
-  // it as the mode that tolerates concurrent in-flight transactions, and dropped
-  // transactions cite duplicate generation values.
+  // Uniqueness is left to the SDK. Window is already its default mode, seeded
+  // with a microsecond timestamp; passing our own millisecond value would cut
+  // resolution 1000x and two transactions signed by this credential inside one
+  // millisecond would collide, the second being dropped. Cleanup shares the
+  // credential, so an order and its cancel can land in the same millisecond.
   const tx = Transaction.builder()
     .call(RuntimeCall.exchange(User.placeOrders(marketId, orders, false)))
-    .window(BigInt(params.uniqueness_ms ?? Date.now()))
     .build(client)
     .toBase64();
 
@@ -174,7 +176,7 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     await main();
   } catch (err) {

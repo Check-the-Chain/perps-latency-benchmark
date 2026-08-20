@@ -124,7 +124,7 @@ func newAccountsCommand() *cobra.Command {
 					if wallet.PublicKey == "" {
 						fmt.Fprintln(cmd.OutOrStdout(), "ed25519: missing")
 					} else {
-						fmt.Fprintf(cmd.OutOrStdout(), "bullet delegate public key, hex-encoded (register in webapp, not the account address; webapp encoding unconfirmed, see venue README): %s\n", wallet.PublicKey)
+						fmt.Fprintf(cmd.OutOrStdout(), "bullet delegate public key, base58 (register in webapp; this is not the account address): %s\n", wallet.PublicKey)
 					}
 				}
 			}
@@ -248,7 +248,7 @@ func printWalletSummary(w io.Writer, wallets map[accounts.WalletKind]accounts.Wa
 		case accounts.WalletStark:
 			fmt.Fprintf(w, "  stark public key: %s\n", wallet.PublicKey)
 		case accounts.WalletEd25519:
-			fmt.Fprintf(w, "  bullet delegate public key, hex-encoded (register in webapp, not the account address; webapp encoding unconfirmed, see venue README): %s\n", wallet.PublicKey)
+			fmt.Fprintf(w, "  bullet delegate public key, base58 (register in webapp; this is not the account address): %s\n", wallet.PublicKey)
 		}
 	}
 }
@@ -306,7 +306,7 @@ func printLoadedWalletIdentifiers(w io.Writer, specs []accounts.VenueSpec, env m
 		case accounts.WalletStark:
 			printValueOrMissing(w, "stark public key", wallet.PublicKey)
 		case accounts.WalletEd25519:
-			printValueOrMissing(w, "bullet delegate public key, hex-encoded (register in webapp, not the account address; webapp encoding unconfirmed)", wallet.PublicKey)
+			printValueOrMissing(w, "bullet delegate public key, base58 (register in webapp; this is not the account address)", wallet.PublicKey)
 		}
 	}
 }

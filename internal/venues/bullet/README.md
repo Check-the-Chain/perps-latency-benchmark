@@ -63,6 +63,16 @@ in the same file. A hand-written config that changes only one of the two can
 still point the socket and the signed chain parameters at different networks;
 change them together.
 
+## Transaction uniqueness
+
+The builders do not call `.window()`. It is already the SDK's default mode,
+seeded with a **microsecond** timestamp; supplying a millisecond value instead
+cuts resolution 1000x, and two transactions signed by the same delegate inside
+one millisecond collide, the second being reported `dropped`. Order submission
+and cleanup cancellation share the credential, so an order and its own cancel
+can land in the same millisecond. Do not pin a uniqueness value in a config:
+every transaction after the first would be a guaranteed drop.
+
 ## Client order ids
 
 Generated ids are kept below 2^52. They are u64 on the wire and the SDK accepts
@@ -94,9 +104,9 @@ transaction. WebSocket is the faster path.
 - `submitted` is the normal happy-path acknowledgement, not `processed`; it is
   classified accepted, with book entry verified separately by the confirmation
   match.
-- The delegate public key is printed hex-encoded by `accounts checklist`, but
-  Bullet addresses are base58 — `/api/v1/delegateOf` rejects hex. Convert before
-  registering.
+- The delegate public key is printed base58 by `accounts checklist`, which is
+  the encoding Bullet accepts; `/api/v1/delegateOf` rejects the hex form of the
+  same bytes.
 
 ## Taker runs are blocked pending neutralization support
 

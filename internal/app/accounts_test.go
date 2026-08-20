@@ -10,7 +10,7 @@ import (
 
 func TestPrintLoadedWalletIdentifiersShowsBulletDelegatePublicKeyNotSeed(t *testing.T) {
 	seed := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-	wantPublicKey := "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+	wantPublicKey := "FAe4sisG95oZ42w7buUn5qEE4TAnfTTFPiguZUHmhiF" // base58, the encoding Bullet accepts
 
 	specs, err := accounts.ResolveVenues("bullet")
 	if err != nil {

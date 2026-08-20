@@ -110,3 +110,42 @@ func TestClassifyMapsErrorCodes(t *testing.T) {
 		})
 	}
 }
+
+// HTTP POST /tx/submit returns SubmitTxResponse with id and status at the top
+// level rather than the WebSocket error/results envelope. Before this was
+// handled, every successful HTTP sample classified as unknown and an HTTP
+// "dropped" was never rejected.
+func TestClassifyHTTPSubmitEnvelope(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want lifecycle.ClassificationStatus
+	}{
+		{"processed", `{"id":"0xabc","status":"processed","tx_number":7}`, lifecycle.StatusAccepted},
+		{"submitted", `{"id":"0xabc","status":"submitted"}`, lifecycle.StatusAccepted},
+		{"dropped", `{"id":"0xabc","status":"dropped"}`, lifecycle.StatusRejected},
+		{"reverted receipt", `{"id":"0xabc","status":"processed","receipt":{"result":"reverted"}}`, lifecycle.StatusRejected},
+		{"skipped receipt", `{"id":"0xabc","status":"processed","receipt":{"result":"skipped"}}`, lifecycle.StatusRejected},
+		{"successful receipt", `{"id":"0xabc","status":"processed","receipt":{"result":"successful"}}`, lifecycle.StatusAccepted},
+		{"flat http error", `{"status":400,"message":"Bad request: invalid tx"}`, lifecycle.StatusRejected},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := Classify(lifecycle.ResponseInput{Body: []byte(testCase.body)})
+			if got.Status != testCase.want {
+				t.Fatalf("status = %q, want %q (reason %q)", got.Status, testCase.want, got.Reason)
+			}
+		})
+	}
+}
+
+// The numeric-status HTTP error shape must not be mistaken for a TxStatus.
+func TestClassifyHTTPErrorCarriesMessage(t *testing.T) {
+	got := Classify(lifecycle.ResponseInput{Body: []byte(`{"status":429,"message":"rate limited"}`)})
+	if got.Status != lifecycle.StatusRejected {
+		t.Fatalf("status = %q, want rejected", got.Status)
+	}
+	if got.Reason != "rate limited" {
+		t.Fatalf("reason = %q, want the server message", got.Reason)
+	}
+}

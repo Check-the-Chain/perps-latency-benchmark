@@ -226,7 +226,7 @@ func GenerateWallet(kind WalletKind) (Wallet, error) {
 		return Wallet{
 			Kind:       WalletEd25519,
 			PrivateKey: hex.EncodeToString(private.Seed()),
-			PublicKey:  hex.EncodeToString(public),
+			PublicKey:  encodeBase58(public),
 		}, nil
 	default:
 		return Wallet{}, fmt.Errorf("unsupported wallet kind %q", kind)
@@ -272,7 +272,7 @@ func PublicFromEnv(kind WalletKind, env map[string]string) (Wallet, error) {
 		}
 		return Wallet{
 			Kind:      WalletEd25519,
-			PublicKey: hex.EncodeToString(ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)),
+			PublicKey: encodeBase58(ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)),
 		}, nil
 	default:
 		return Wallet{}, fmt.Errorf("unsupported wallet kind %q", kind)
