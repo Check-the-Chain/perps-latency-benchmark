@@ -23,6 +23,18 @@ func TestLookupSupportsKnownVenuesAndAliases(t *testing.T) {
 	}
 }
 
+func TestLookupBullet(t *testing.T) {
+	for _, name := range []string{"bullet", "Bullet", "bullet-xyz", "bulletx"} {
+		definition, ok := Lookup(name)
+		if !ok {
+			t.Fatalf("lookup %q must resolve", name)
+		}
+		if definition.Name != "bullet" {
+			t.Fatalf("lookup %q resolved to %q", name, definition.Name)
+		}
+	}
+}
+
 func TestNamesIncludesInitialVenueSet(t *testing.T) {
 	names := Names()
 	for _, name := range []string{

@@ -6,6 +6,7 @@ Benchmark crypto perps order submission latency.
 
 - Go 1.25+
 - `uv` for live Hyperliquid/Lighter/Extended runs; Python 3 for Aster
+- Node 20+ for live Bullet runs; run `npm ci` in `internal/venues/bullet` first
 - Venue accounts funded and configured before using `--confirm-live`
 
 Long-running services should prefer direct Python interpreters over resident
@@ -68,6 +69,7 @@ Swap the config file for another configured venue, for example:
 examples/lighter-builder.json
 examples/aster-builder.json
 examples/extended-builder.json
+examples/bullet-builder.json
 ```
 
 The starter configs use small post-only orders. Keep them small until account
@@ -321,6 +323,11 @@ network floor" toggle to inspect the optional network-adjusted view.
   private WebSocket confirmation, and cleanup.
 - Pacifica: WebSocket order submission, native WebSocket batch benchmark,
   private WebSocket confirmation, and per-sample WebSocket cleanup.
+- Bullet: WebSocket order submission, native WebSocket batch benchmark, book-top
+  post-only pricing, cleanup by client order id, and account-feed confirmation.
+  Batch orders are placed in one transaction under a single signature, so batch
+  latency is not directly comparable with venues that sign each batch action
+  individually.
 
 ## Troubleshooting
 

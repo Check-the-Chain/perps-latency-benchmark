@@ -60,6 +60,9 @@ function LogoMark({ venue }: { venue: string }) {
   switch (venue) {
     case "aster":
       return <AsterLogo />
+    case "bullet":
+    case "bullet_direct":
+      return <BulletLogo />
     case "edgex":
       return <EdgeXLogo />
     case "extended":
@@ -91,6 +94,9 @@ function logoSurfaceClass(venue: string) {
   switch (venue) {
     case "aster":
       return "border-white/10 bg-[#050505]"
+    case "bullet":
+    case "bullet_direct":
+      return "border-[#E5FF7E]/20 bg-[#101010]"
     case "edgex":
       return "border-white/10 bg-[#121212]"
     case "extended":
@@ -204,6 +210,18 @@ function OmniLogo() {
       <path
         d="M94 180h25.4c10.2 0 17.3-5 21.2-15.1l20.2-52.2c5.7-14.7 15.7-22 30-22 15.9 0 27.2 8.9 34 26.8l16.7 44.1c4.6 12.3 12.1 18.4 22.5 18.4h2v14h-8.1c-16.1 0-27.6-8-34.3-24l-16.8-39.8c-4.3-10.2-10.7-15.3-19.1-15.3-8.8 0-15.1 5.2-18.9 15.5l-14.2 38.7c-6.1 16.6-17.7 24.9-34.8 24.9H94v-14Z"
         fill="#4C9AF8"
+      />
+    </svg>
+  )
+}
+
+function BulletLogo() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-full" aria-hidden>
+      <rect width="20" height="20" fill="#101010" />
+      <path
+        d="M10.3872 19.9999C9.82251 19.9999 9.24877 19.8877 8.69311 19.6578C7.03523 18.9718 6.00536 17.4298 6.00536 15.6361V9.00808H0V6.00536H6.00536V-5.34058e-05H9.00806V6.00536H15.636C17.4297 6.00536 18.9717 7.03523 19.6577 8.69315C20.3437 10.3511 19.9834 12.1683 18.7129 13.437L13.437 18.7131C12.5935 19.5565 11.5076 19.9999 10.3854 19.9999H10.3872ZM9.00806 9.00808V15.6361C9.00806 16.4741 9.64696 16.8035 9.84243 16.8832C10.0379 16.9646 10.7221 17.1818 11.3139 16.59L16.5899 11.314C17.1817 10.7221 16.9645 10.0379 16.8831 9.84247C16.8016 9.64699 16.4722 9.00808 15.636 9.00808H9.00806Z"
+        fill="#E5FF7E"
       />
     </svg>
   )

@@ -113,3 +113,80 @@ func TestEveryRegisteredVenueHasAccountSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateEd25519WalletProducesSeedAndPublicKey(t *testing.T) {
+	wallet, err := GenerateWallet(WalletEd25519)
+	if err != nil {
+		t.Fatalf("generate ed25519 wallet: %v", err)
+	}
+	if len(wallet.PrivateKey) != 64 {
+		t.Fatalf("private key hex length = %d, want 64 (32-byte seed)", len(wallet.PrivateKey))
+	}
+	// The public key is base58, the encoding Bullet's API accepts; a 32-byte key
+	// encodes to 43 or 44 characters.
+	if len(wallet.PublicKey) < 43 || len(wallet.PublicKey) > 44 {
+		t.Fatalf("public key length = %d, want 43-44 (base58 of a 32-byte key)", len(wallet.PublicKey))
+	}
+	if strings.ContainsAny(wallet.PublicKey, "0OIl+/") {
+		t.Fatalf("public key %q contains characters outside the base58 alphabet", wallet.PublicKey)
+	}
+	if wallet.Kind != WalletEd25519 {
+		t.Fatalf("kind = %q, want %q", wallet.Kind, WalletEd25519)
+	}
+}
+
+func TestBulletSpecGeneratesDelegateKey(t *testing.T) {
+	var spec VenueSpec
+	for _, candidate := range Specs() {
+		if candidate.Name == "bullet" {
+			spec = candidate
+			break
+		}
+	}
+	if spec.Name == "" {
+		t.Fatal("bullet venue spec must exist")
+	}
+	values, wallets, err := Generate([]VenueSpec{spec}, map[string]string{})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if values["BULLET_DELEGATE_PRIVATE_KEY"] == "" {
+		t.Fatal("delegate private key must be generated")
+	}
+	if _, ok := wallets[WalletEd25519]; !ok {
+		t.Fatal("an ed25519 wallet must be generated for bullet")
+	}
+	if _, present := values["BULLET_ACCOUNT_ADDRESS"]; !present {
+		t.Fatal("account address must be present as a blank required value")
+	}
+}
+
+func TestPublicFromEnvDerivesBulletDelegatePublicKey(t *testing.T) {
+	seed := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+	wallet, err := PublicFromEnv(WalletEd25519, map[string]string{"BULLET_DELEGATE_PRIVATE_KEY": seed})
+	if err != nil {
+		t.Fatalf("derive public key: %v", err)
+	}
+	if wallet.PublicKey != "FAe4sisG95oZ42w7buUn5qEE4TAnfTTFPiguZUHmhiF" {
+		t.Fatalf("public key = %q, want the known base58 vector for this seed", wallet.PublicKey)
+	}
+	if wallet.PrivateKey != "" {
+		t.Fatal("PublicFromEnv must not leak the private key")
+	}
+}
+
+func TestEncodeBase58MatchesKnownVectors(t *testing.T) {
+	cases := []struct {
+		in   []byte
+		want string
+	}{
+		{[]byte{0}, "1"},
+		{[]byte{0, 0, 1}, "112"},
+		{[]byte("hello world"), "StV1DL6CwTryKyV"},
+	}
+	for _, testCase := range cases {
+		if got := encodeBase58(testCase.in); got != testCase.want {
+			t.Fatalf("encodeBase58(%v) = %q, want %q", testCase.in, got, testCase.want)
+		}
+	}
+}

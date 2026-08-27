@@ -217,6 +217,36 @@ func TestSnapshotsAreCappedToTopLevels(t *testing.T) {
 	}
 }
 
+func TestBulletParserReadsBookTicker(t *testing.T) {
+	parser := NewBulletParser()
+
+	subscribe := parser.Subscribe(Config{Symbol: "BTC-USD"})
+	if !strings.Contains(string(subscribe), "BTC-USD@bookTicker") {
+		t.Fatalf("subscribe = %q, want BTC-USD@bookTicker topic", subscribe)
+	}
+
+	snapshot, ok := parser.Parse([]byte(`{"e":"bookTicker","u":1000,"E":1706745600000000,"T":1706745600000000,"s":"BTC-USD","b":"50000.00","B":"1.5","a":"50001.00","A":"1.2","mt":"s"}`))
+	if !ok {
+		t.Fatal("bookTicker frame must parse")
+	}
+	if snapshot.Bid != 50000 {
+		t.Fatalf("bid = %v, want 50000", snapshot.Bid)
+	}
+	if snapshot.Ask != 50001 {
+		t.Fatalf("ask = %v, want 50001", snapshot.Ask)
+	}
+}
+
+func TestBulletParserIgnoresNonBookTickerFrames(t *testing.T) {
+	parser := NewBulletParser()
+	if _, ok := parser.Parse([]byte(`{"e":"status","status":"connected","clientId":"ws_abc"}`)); ok {
+		t.Fatal("status frame must not produce a snapshot")
+	}
+	if _, ok := parser.Parse([]byte(`{"e":"depthUpdate","s":"BTC-USD","b":"50000.00","B":"1.5","a":"50001.00","A":"1.2"}`)); ok {
+		t.Fatal("non-bookTicker frame with valid prices must not produce a snapshot")
+	}
+}
+
 func TestTrackerRunClosesConnectionOnContextCancel(t *testing.T) {
 	connected := make(chan struct{})
 	closed := make(chan struct{})

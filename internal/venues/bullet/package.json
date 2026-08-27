@@ -1,0 +1,15 @@
+{
+  "name": "perps-bench-bullet-builder",
+  "private": true,
+  "type": "module",
+  "description": "Bullet payload builders for perps-latency-benchmark. Signing is delegated to the official Bullet WASM SDK.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@bulletxyz/sdk-wasm": "0.0.37"
+  }
+}

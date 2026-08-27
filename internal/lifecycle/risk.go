@@ -51,11 +51,24 @@ func FillLikely(profile OrderProfile) bool {
 	if strings.Contains(orderType, "market") || orderType == "1" {
 		return true
 	}
+	if isImmediateOrderType(orderType) {
+		return true
+	}
 	switch tif {
 	case "0", "ioc", "immediate_or_cancel", "fok", "fill_or_kill":
 		return true
 	default:
 		return isFalse(profile.PostOnly)
+	}
+}
+
+func isImmediateOrderType(value string) bool {
+	normalized := strings.ReplaceAll(value, "-", "_")
+	switch normalized {
+	case "ioc", "immediate_or_cancel", "fok", "fill_or_kill":
+		return true
+	default:
+		return false
 	}
 }
 

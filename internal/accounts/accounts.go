@@ -3,6 +3,8 @@ package accounts
 import (
 	"cmp"
 	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -21,8 +23,9 @@ import (
 type WalletKind string
 
 const (
-	WalletEVM   WalletKind = "evm"
-	WalletStark WalletKind = "stark"
+	WalletEVM     WalletKind = "evm"
+	WalletStark   WalletKind = "stark"
+	WalletEd25519 WalletKind = "ed25519"
 )
 
 type EnvVar struct {
@@ -215,6 +218,16 @@ func GenerateWallet(kind WalletKind) (Wallet, error) {
 			PrivateKey: hexBig(privateKey),
 			PublicKey:  hexBig(publicX),
 		}, nil
+	case WalletEd25519:
+		public, private, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return Wallet{}, err
+		}
+		return Wallet{
+			Kind:       WalletEd25519,
+			PrivateKey: hex.EncodeToString(private.Seed()),
+			PublicKey:  encodeBase58(public),
+		}, nil
 	default:
 		return Wallet{}, fmt.Errorf("unsupported wallet kind %q", kind)
 	}
@@ -245,6 +258,22 @@ func PublicFromEnv(kind WalletKind, env map[string]string) (Wallet, error) {
 		}
 		publicX, _ := curve.PrivateKeyToPoint(privateKey)
 		return Wallet{Kind: kind, PublicKey: hexBig(publicX)}, nil
+	case WalletEd25519:
+		key := env["BULLET_DELEGATE_PRIVATE_KEY"]
+		if key == "" {
+			return Wallet{Kind: kind}, nil
+		}
+		seed, err := hex.DecodeString(strip0x(key))
+		if err != nil {
+			return Wallet{}, err
+		}
+		if len(seed) != ed25519.SeedSize {
+			return Wallet{}, fmt.Errorf("ed25519 seed must be %d bytes", ed25519.SeedSize)
+		}
+		return Wallet{
+			Kind:      WalletEd25519,
+			PublicKey: encodeBase58(ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)),
+		}, nil
 	default:
 		return Wallet{}, fmt.Errorf("unsupported wallet kind %q", kind)
 	}

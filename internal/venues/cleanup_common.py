@@ -1,4 +1,10 @@
-"""Shared cleanup-script result helpers."""
+"""Shared cleanup-script result helpers.
+
+cleanup_result, cleanup_orders_for_venue and result_orders_for_venue are
+mirrored in JavaScript by internal/venues/bullet/cancel_payload.mjs, whose
+builder runs under Node and cannot import this module. Changing the shape or
+semantics of those three helpers means changing the mirror too.
+"""
 
 from __future__ import annotations
 

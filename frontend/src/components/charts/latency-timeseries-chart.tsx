@@ -1314,6 +1314,8 @@ export function colorForVenue(venue: string) {
 
 const KNOWN_VENUE_COLORS: Record<string, string> = {
   aster: "oklch(0.68 0.17 65)",
+  bullet: "oklch(0.63 0.17 112)",
+  bullet_direct: "oklch(0.74 0.15 112)",
   edgex: "oklch(0.6 0.16 40)",
   extended: "oklch(0.58 0.17 18)",
   grvt: "oklch(0.45 0.08 250)",

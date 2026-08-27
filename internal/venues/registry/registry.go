@@ -6,6 +6,7 @@ import (
 
 	"perps-latency-benchmark/internal/names"
 	"perps-latency-benchmark/internal/venues/aster"
+	"perps-latency-benchmark/internal/venues/bullet"
 	"perps-latency-benchmark/internal/venues/edgex"
 	"perps-latency-benchmark/internal/venues/extended"
 	"perps-latency-benchmark/internal/venues/grvt"
@@ -19,6 +20,8 @@ import (
 
 var definitions = []spec.Definition{
 	aster.Definition(),
+	bullet.Definition(),
+	bulletDirectDefinition(),
 	edgex.Definition(),
 	extended.Definition(),
 	grvt.Definition(),
@@ -46,6 +49,22 @@ func nadoDirectDefinition() spec.Definition {
 	definition.DefaultWSURL = "wss://prod-mm.nado-backend.xyz/ws/v2"
 	definition.Notes = append([]string{
 		"Direct backend runner uses Gateway WebSocket execute at wss://prod-mm.nado-backend.xyz/ws/v2 and REST fallback POST https://prod-mm.nado-backend.xyz/execute to bypass the public Cloudflare proxy.",
+	}, definition.Notes...)
+	return definition
+}
+
+// bulletDirectDefinition benchmarks the market-maker ingress instead of the
+// public host. tradingapi-mm.bullet.xyz resolves straight to AWS ap-northeast-1
+// rather than Cloudflare, so it measures the exchange without the proxy hop.
+// The endpoint is IP-allowlisted: it returns HTTP 403 from unlisted addresses.
+func bulletDirectDefinition() spec.Definition {
+	definition := bullet.DirectDefinition()
+	definition.Name = "bullet_direct"
+	definition.Aliases = []string{"bullet-direct", "bullet direct", "bullet_mm", "bullet-mm"}
+	definition.Notes = append([]string{
+		"Direct market-maker ingress at wss://tradingapi-mm.bullet.xyz/ws bypasses the public Cloudflare proxy; the host resolves to AWS ap-northeast-1 directly.",
+		"The MM endpoint is IP-allowlisted and returns HTTP 403 from unlisted addresses, so this venue only runs from an allowlisted collector.",
+		"Numbers from this venue are not comparable with venues measured over their public endpoints; report it alongside bullet, never instead of it.",
 	}, definition.Notes...)
 	return definition
 }

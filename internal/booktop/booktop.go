@@ -215,6 +215,10 @@ func NewPacificaParser() Parser {
 	return pacificaParser{}
 }
 
+func NewBulletParser() Parser {
+	return bulletParser{}
+}
+
 func NewNadoMarketPriceParser() Parser {
 	return nadoMarketPriceParser{}
 }
@@ -395,6 +399,33 @@ func (pacificaParser) Parse(data []byte) (Snapshot, bool) {
 		Bids:       []Level{{Price: bid, Size: bidSize}},
 		Asks:       []Level{{Price: ask, Size: askSize}},
 		ExchangeAt: unixMillis(body["t"]),
+	}, true
+}
+
+type bulletParser struct{}
+
+func (bulletParser) Subscribe(cfg Config) []byte {
+	return []byte(fmt.Sprintf(`{"method":"subscribe","params":["%s@bookTicker"],"id":1}`, cfg.Symbol))
+}
+
+func (bulletParser) Parse(data []byte) (Snapshot, bool) {
+	var frame map[string]any
+	if err := json.Unmarshal(data, &frame); err != nil {
+		return Snapshot{}, false
+	}
+	if text(frame["e"]) != "bookTicker" {
+		return Snapshot{}, false
+	}
+	bid := number(frame["b"])
+	ask := number(frame["a"])
+	if bid <= 0 || ask <= 0 {
+		return Snapshot{}, false
+	}
+	return Snapshot{
+		Bid:     bid,
+		Ask:     ask,
+		BidSize: number(frame["B"]),
+		AskSize: number(frame["A"]),
 	}, true
 }
 
