@@ -1,0 +1,278 @@
+package exchangetps
+
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+type SeriesBucket string
+
+const (
+	SeriesBucket1m SeriesBucket = "1m"
+	SeriesBucket1h SeriesBucket = "1h"
+)
+
+const providerReportedFinalityDelay = 2 * time.Minute
+
+type SeriesReadModel struct {
+	UpdatedAt time.Time   `json:"updated_at"`
+	Bucket    string      `json:"bucket"`
+	Window    string      `json:"window"`
+	Series    []SeriesRow `json:"series"`
+	Sources   []SourceRow `json:"sources"`
+}
+
+type SeriesRow struct {
+	Venue           string             `json:"venue"`
+	BucketStart     time.Time          `json:"bucket_start"`
+	BucketSeconds   int64              `json:"bucket_seconds"`
+	Complete        bool               `json:"complete"`
+	TxCount         int64              `json:"tx_count"`
+	BlockCount      int64              `json:"block_count,omitempty"`
+	OrderCount      int64              `json:"order_count,omitempty"`
+	PlaceCount      int64              `json:"place_count,omitempty"`
+	CancelCount     int64              `json:"cancel_count,omitempty"`
+	ErrorCount      int64              `json:"error_count,omitempty"`
+	TPS             float64            `json:"tps"`
+	OrdersPerSecond float64            `json:"orders_per_second,omitempty"`
+	SourceQuality   string             `json:"source_quality"`
+	CategorySplit   []CategorySplitRow `json:"category_split,omitempty"`
+}
+
+type CategorySplitRow struct {
+	Category         string  `json:"category"`
+	Share            float64 `json:"share"`
+	SharePPM         int64   `json:"share_ppm"`
+	SampleTxCount    int64   `json:"sample_tx_count"`
+	SampleBlockCount int64   `json:"sample_block_count"`
+}
+
+type SourceRow struct {
+	Venue         string `json:"venue"`
+	Quality       string `json:"quality"`
+	BucketSeconds int64  `json:"bucket_seconds"`
+	Description   string `json:"description"`
+	UpdatedAt     int64  `json:"updated_at"`
+}
+
+func (s *Store) RecentSeries(ctx context.Context, bucket SeriesBucket, since time.Time, limit int) (SeriesReadModel, error) {
+	parsedBucket, err := ParseSeriesBucket(string(bucket))
+	if err != nil {
+		return SeriesReadModel{}, err
+	}
+	table, bucketSeconds, err := seriesTable(parsedBucket)
+	if err != nil {
+		return SeriesReadModel{}, err
+	}
+	if limit <= 0 {
+		limit = 5000
+	}
+	now := time.Now().UTC()
+	query := fmt.Sprintf(`
+SELECT venues.code, %s.t, %s.tx, %s.blk, %s.ord, %s.plc, %s.cxl, %s.err,
+       COALESCE(venue_sources.q, 0)
+FROM %s
+JOIN venues ON venues.id = %s.v
+LEFT JOIN venue_sources ON venue_sources.v = venues.id
+WHERE %s.t >= ?
+ORDER BY %s.t ASC, venues.code ASC
+LIMIT ?
+`, table, table, table, table, table, table, table, table, table, table, table)
+	rows, err := s.db.QueryContext(ctx, query, since.UTC().Unix(), limit)
+	if err != nil {
+		return SeriesReadModel{}, err
+	}
+	defer rows.Close()
+
+	series := make([]SeriesRow, 0)
+	for rows.Next() {
+		var row SeriesRow
+		var bucketUnix int64
+		var sourceQuality SourceQuality
+		if err := rows.Scan(
+			&row.Venue,
+			&bucketUnix,
+			&row.TxCount,
+			&row.BlockCount,
+			&row.OrderCount,
+			&row.PlaceCount,
+			&row.CancelCount,
+			&row.ErrorCount,
+			&sourceQuality,
+		); err != nil {
+			return SeriesReadModel{}, err
+		}
+		row.BucketStart = time.Unix(bucketUnix, 0).UTC()
+		row.BucketSeconds = bucketSeconds
+		row.Complete = seriesBucketFinalized(row.BucketStart, bucketSeconds, now, sourceQuality)
+		if !row.Complete {
+			continue
+		}
+		row.TPS = float64(row.TxCount) / float64(bucketSeconds)
+		if row.OrderCount > 0 {
+			row.OrdersPerSecond = float64(row.OrderCount) / float64(bucketSeconds)
+		}
+		row.SourceQuality = sourceQuality.String()
+		series = append(series, row)
+	}
+	if err := rows.Err(); err != nil {
+		return SeriesReadModel{}, err
+	}
+
+	if len(series) > 0 {
+		splits, err := s.recentCategorySplits(ctx, parsedBucket, since)
+		if err != nil {
+			return SeriesReadModel{}, err
+		}
+		for i := range series {
+			key := categorySplitKey{venue: series[i].Venue, bucketUnix: series[i].BucketStart.Unix()}
+			series[i].CategorySplit = splits[key]
+		}
+	}
+
+	sources, err := s.SourceRows(ctx)
+	if err != nil {
+		return SeriesReadModel{}, err
+	}
+	return SeriesReadModel{
+		UpdatedAt: now,
+		Bucket:    string(parsedBucket),
+		Window:    time.Since(since).Round(time.Second).String(),
+		Series:    series,
+		Sources:   sources,
+	}, nil
+}
+
+type categorySplitKey struct {
+	venue      string
+	bucketUnix int64
+}
+
+func (s *Store) recentCategorySplits(ctx context.Context, bucket SeriesBucket, since time.Time) (map[categorySplitKey][]CategorySplitRow, error) {
+	table, err := categorySplitTable(bucket)
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf(`
+SELECT venues.code, split.t, split.category, split.share_ppm, split.sample_tx, split.sample_blk
+FROM %s AS split
+JOIN venues ON venues.id = split.v
+WHERE split.t >= ?
+ORDER BY venues.code ASC, split.t ASC, split.share_ppm DESC, split.category ASC
+`, table)
+	rows, err := s.db.QueryContext(ctx, query, since.UTC().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	splits := make(map[categorySplitKey][]CategorySplitRow)
+	for rows.Next() {
+		var venue string
+		var bucketUnix int64
+		var row CategorySplitRow
+		if err := rows.Scan(
+			&venue,
+			&bucketUnix,
+			&row.Category,
+			&row.SharePPM,
+			&row.SampleTxCount,
+			&row.SampleBlockCount,
+		); err != nil {
+			return nil, err
+		}
+		row.Share = float64(row.SharePPM) / 1_000_000
+		key := categorySplitKey{venue: venue, bucketUnix: bucketUnix}
+		splits[key] = append(splits[key], row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return splits, nil
+}
+
+func seriesBucketFinalized(
+	bucketStart time.Time,
+	bucketSeconds int64,
+	now time.Time,
+	sourceQuality SourceQuality,
+) bool {
+	finalAt := bucketStart.Add(time.Duration(bucketSeconds) * time.Second)
+	if sourceQuality == SourceQualityProviderReported {
+		finalAt = finalAt.Add(providerReportedFinalityDelay)
+	}
+	return !finalAt.After(now)
+}
+
+func (s *Store) SourceRows(ctx context.Context) ([]SourceRow, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT venues.code, venue_sources.q, venue_sources.bucket_s, venue_sources.description, venue_sources.upd
+FROM venue_sources
+JOIN venues ON venues.id = venue_sources.v
+ORDER BY venues.code ASC
+`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sources := make([]SourceRow, 0)
+	for rows.Next() {
+		var source SourceRow
+		var quality SourceQuality
+		if err := rows.Scan(&source.Venue, &quality, &source.BucketSeconds, &source.Description, &source.UpdatedAt); err != nil {
+			return nil, err
+		}
+		source.Quality = quality.String()
+		sources = append(sources, source)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return sources, nil
+}
+
+func (q SourceQuality) String() string {
+	switch q {
+	case SourceQualityBlockDerived:
+		return "block-derived"
+	case SourceQualityProviderReported:
+		return "provider-reported"
+	default:
+		return "unknown"
+	}
+}
+
+func seriesTable(bucket SeriesBucket) (string, int64, error) {
+	switch bucket {
+	case SeriesBucket1m:
+		return "tps_1m", 60, nil
+	case SeriesBucket1h:
+		return "tps_1h", 3600, nil
+	}
+	return "", 0, fmt.Errorf("unsupported exchange TPS bucket %q", bucket)
+}
+
+func categorySplitTable(bucket SeriesBucket) (string, error) {
+	switch bucket {
+	case SeriesBucket1m:
+		return "tps_category_split_1m", nil
+	case SeriesBucket1h:
+		return "tps_category_split_1h", nil
+	}
+	return "", fmt.Errorf("unsupported exchange TPS bucket %q", bucket)
+}
+
+func ParseSeriesBucket(value string) (SeriesBucket, error) {
+	switch SeriesBucket(value) {
+	case "":
+		return SeriesBucket1m, nil
+	case SeriesBucket1m:
+		return SeriesBucket1m, nil
+	case SeriesBucket1h:
+		return SeriesBucket1h, nil
+	default:
+		return "", fmt.Errorf("unsupported exchange TPS bucket %q", value)
+	}
+}

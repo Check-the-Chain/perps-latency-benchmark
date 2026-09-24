@@ -1,0 +1,174 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"perps-latency-benchmark/internal/booktop"
+	"perps-latency-benchmark/internal/payload"
+	"perps-latency-benchmark/internal/venues/hyperliquid"
+	"perps-latency-benchmark/internal/venues/nado"
+	"perps-latency-benchmark/internal/venues/spec"
+)
+
+func TestDynamicPostOnlyHTTPPriceHookCachesHyperliquidL2Book(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/info" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["type"] != "l2Book" || body["coin"] != "BTC" {
+			t.Fatalf("request body = %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"coin":"BTC","time":1777966248747,"levels":[[{"px":"100","sz":"5"}],[{"px":"101","sz":"3"}]]}`))
+	}))
+	defer server.Close()
+
+	params := map[string]any{
+		"post_only_price_source":     "hyperliquid_l2book_http",
+		"post_only_price_offset_bps": 500,
+		"post_only_price_refresh_ms": 300000,
+	}
+	runtime := spec.RuntimeConfig{
+		BaseURL: server.URL,
+		Params:  map[string]any{"symbol": "BTC"},
+	}
+	hook := dynamicPostOnlyHTTPPriceHook("hyperliquid", params, hyperliquid.Definition(), runtime)
+	req := payload.Request{Params: map[string]any{"side": "buy"}}
+
+	effective, metadata, err := hook(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective["price"] != "95" {
+		t.Fatalf("price = %v", effective["price"])
+	}
+	if metadata["post_only_price_source"] != "hyperliquid_l2book_http" {
+		t.Fatalf("metadata source = %v", metadata["post_only_price_source"])
+	}
+	if metadata["post_only_price_cached"] != false {
+		t.Fatalf("first cached = %v", metadata["post_only_price_cached"])
+	}
+	if requests != 1 {
+		t.Fatalf("requests after first hook = %d", requests)
+	}
+
+	_, metadata, err = hook(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata["post_only_price_cached"] != true {
+		t.Fatalf("second cached = %v", metadata["post_only_price_cached"])
+	}
+	if requests != 1 {
+		t.Fatalf("requests after cached hook = %d", requests)
+	}
+
+	nextChunkHook := dynamicPostOnlyHTTPPriceHook("hyperliquid", params, hyperliquid.Definition(), runtime)
+	_, metadata, err = nextChunkHook(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata["post_only_price_cached"] != true {
+		t.Fatalf("next chunk cached = %v", metadata["post_only_price_cached"])
+	}
+	if requests != 1 {
+		t.Fatalf("requests after next chunk hook = %d", requests)
+	}
+}
+
+func TestDynamicPostOnlyHTTPPriceHookUsesNadoMarketPrice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/query" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["type"] != "market_price" || body["product_id"] != float64(2) {
+			t.Fatalf("request body = %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"product_id":2,"bid_x18":"100000000000000000000","ask_x18":"101000000000000000000"}}`))
+	}))
+	defer server.Close()
+
+	params := map[string]any{
+		"product_id":                 2,
+		"post_only_price_source":     "nado_market_price_http",
+		"post_only_price_offset_bps": 500,
+		"post_only_price_refresh_ms": 10000,
+	}
+	runtime := spec.RuntimeConfig{
+		BaseURL: server.URL,
+		Params:  params,
+	}
+	hook := dynamicPostOnlyHTTPPriceHook("nado", params, nado.Definition(), runtime)
+	req := payload.Request{Params: map[string]any{"side": "buy"}}
+
+	effective, metadata, err := hook(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective["price"] != "95" {
+		t.Fatalf("price = %v", effective["price"])
+	}
+	if metadata["post_only_price_source"] != "nado_market_price_http" {
+		t.Fatalf("metadata source = %v", metadata["post_only_price_source"])
+	}
+}
+
+func TestDynamicTakerConfigCrossesBookWithBuffer(t *testing.T) {
+	snapshot := booktop.Snapshot{
+		Bid:        100,
+		Ask:        101,
+		ReceivedAt: time.Now().UTC(),
+	}
+	cfg := newDynamicTakerConfig("extended", map[string]any{
+		"taker_price_buffer_bps": 150,
+		"taker_price_tick":       1,
+	})
+
+	if got := cfg.paramPrice(cfg.price(snapshot, "buy")); got != "103" {
+		t.Fatalf("buy price = %v", got)
+	}
+	if got := cfg.paramPrice(cfg.price(snapshot, "sell")); got != "98" {
+		t.Fatalf("sell price = %v", got)
+	}
+}
+
+func TestDynamicTakerMetadata(t *testing.T) {
+	receivedAt := time.Now().UTC()
+	snapshot := booktop.Snapshot{
+		Bid:        67000,
+		Ask:        67001,
+		ReceivedAt: receivedAt,
+	}
+	cfg := newDynamicTakerConfig("extended", map[string]any{
+		"taker_price_buffer_bps": 150,
+		"taker_price_tick":       1,
+	})
+
+	metadata := dynamicTakerMetadata(cfg, "book_top", cfg.price(snapshot, "buy"), snapshot)
+
+	if metadata["taker_price_source"] != "book_top" {
+		t.Fatalf("source = %v", metadata["taker_price_source"])
+	}
+	if metadata["taker_price"] != "68007" {
+		t.Fatalf("price = %v", metadata["taker_price"])
+	}
+	if metadata["taker_book_bid"] != float64(67000) || metadata["taker_book_ask"] != float64(67001) {
+		t.Fatalf("book metadata = %#v", metadata)
+	}
+}

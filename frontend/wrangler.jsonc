@@ -1,0 +1,91 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "perps-latency-dashboard",
+  "compatibility_date": "2026-04-30",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env",
+  ],
+  "main": "@tanstack/react-start/server-entry",
+  "account_id": "b7c467d8a66223357f5492d16bf40b35",
+  "routes": [
+    {
+      "pattern": "latency.perps.trading",
+      "custom_domain": true,
+    },
+  ],
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+  },
+  "secrets": {
+    "required": [
+      "PERPS_BENCH_API_URL",
+      "PERPS_BENCH_API_PASSWORD",
+      "PERPS_BENCH_ADVANCED_PASSWORD",
+      "PERPS_BENCH_AUTH_SECRET",
+    ],
+  },
+  "vars": {
+    "PERPS_BENCH_API_USER": "bench",
+    "PERPS_BENCH_HIDDEN_VENUES": "edgex",
+    "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
+  },
+  "env": {
+    "staging": {
+      "name": "perps-latency-dashboard-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "staging-latency.perps.trading",
+          "custom_domain": true,
+        },
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 0.1,
+      },
+      "secrets": {
+        "required": [
+          "PERPS_BENCH_API_URL",
+          "PERPS_BENCH_API_PASSWORD",
+          "PERPS_BENCH_ADVANCED_PASSWORD",
+          "PERPS_BENCH_AUTH_SECRET",
+        ],
+      },
+      "vars": {
+        "PERPS_BENCH_API_USER": "bench",
+        "PERPS_BENCH_HIDDEN_VENUES": "edgex",
+        "PERPS_BENCH_PUBLIC_SITE_URL": "https://staging-latency.perps.trading",
+      },
+    },
+    "production": {
+      "name": "perps-latency-dashboard",
+      "routes": [
+        {
+          "pattern": "latency.perps.trading",
+          "custom_domain": true,
+        },
+      ],
+      "workers_dev": false,
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 0.1,
+      },
+      "secrets": {
+        "required": [
+          "PERPS_BENCH_API_URL",
+          "PERPS_BENCH_API_PASSWORD",
+          "PERPS_BENCH_ADVANCED_PASSWORD",
+          "PERPS_BENCH_AUTH_SECRET",
+        ],
+      },
+      "vars": {
+        "PERPS_BENCH_API_USER": "bench",
+        "PERPS_BENCH_HIDDEN_VENUES": "edgex",
+        "PERPS_BENCH_PUBLIC_SITE_URL": "https://latency.perps.trading",
+      },
+    },
+  },
+}

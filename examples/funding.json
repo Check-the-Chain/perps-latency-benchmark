@@ -1,0 +1,106 @@
+{
+  "dry_run": true,
+  "interval_ms": 300000,
+  "state_path": "data/funding-state.json",
+  "env_files": [
+    ".env.wallets.local"
+  ],
+  "wallet": {
+    "chain_id": 42161,
+    "rpc_url_env": "ARBITRUM_RPC_URL",
+    "private_key_env": "BENCHMARK_ARBITRUM_PRIVATE_KEY",
+    "usdc_address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "daily_cap_usdc": 100
+  },
+  "accounts": [
+    {
+      "name": "hyperliquid",
+      "venue_config": "examples/hyperliquid-taker-builder.json",
+      "env_files": [
+        ".env.wallets.local"
+      ],
+      "min_balance_usd": 20,
+      "target_balance_usd": 50,
+      "max_deposit_usdc": 50,
+      "cooldown_ms": 1800000,
+      "deposit": {
+        "type": "evm_usdc_transfer",
+        "to_address": "0x2df1c51e09aecf9cacb7bc98cb1742757f163df7",
+        "min_usdc": 5
+      }
+    },
+    {
+      "name": "lighter",
+      "venue_config": "examples/lighter-market-builder.json",
+      "env_files": [
+        ".env.wallets.local"
+      ],
+      "min_balance_usd": 20,
+      "target_balance_usd": 50,
+      "max_deposit_usdc": 50,
+      "cooldown_ms": 1800000,
+      "deposit": {
+        "type": "lighter_cctp_intent",
+        "base_url": "https://mainnet.zklighter.elliot.ai",
+        "from_address_env": "LIGHTER_L1_ADDRESS",
+        "min_usdc": 5
+      }
+    },
+    {
+      "name": "lighter_free",
+      "venue_config": "examples/lighter-free-market-builder.json",
+      "env_files": [
+        ".env.lighter-free.local",
+        ".env.lighter-free-l1.local"
+      ],
+      "min_balance_usd": 20,
+      "target_balance_usd": 50,
+      "max_deposit_usdc": 50,
+      "cooldown_ms": 1800000,
+      "deposit": {
+        "type": "lighter_cctp_intent",
+        "base_url": "https://mainnet.zklighter.elliot.ai",
+        "from_address_env": "LIGHTER_FREE_L1_ADDRESS",
+        "min_usdc": 5
+      }
+    },
+    {
+      "name": "aster",
+      "venue_config": "examples/aster-taker-builder.json",
+      "env_files": [
+        ".env.aster.local"
+      ],
+      "min_balance_usd": 20,
+      "target_balance_usd": 50,
+      "max_deposit_usdc": 50,
+      "cooldown_ms": 1800000,
+      "deposit": {
+        "type": "aster_treasury_deposit",
+        "token_address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "to_address": "0x9E36CB86a159d479cEd94Fa05036f235Ac40E1d5",
+        "broker_id": 1,
+        "min_usdc": 5
+      }
+    },
+    {
+      "name": "extended",
+      "venue_config": "examples/extended-taker-builder.json",
+      "env_files": [
+        ".env.extended.local"
+      ],
+      "min_balance_usd": 20,
+      "target_balance_usd": 50,
+      "max_deposit_usdc": 50,
+      "cooldown_ms": 1800000,
+      "deposit": {
+        "type": "extended_rhino_bridge",
+        "api_key_env": "EXTENDED_API_KEY",
+        "bridge_chain_in": "ARB",
+        "bridge_chain_out": "STRK",
+        "bridge_asset": "USD",
+        "max_fee_usdc": 0.25,
+        "min_usdc": 5
+      }
+    }
+  ]
+}

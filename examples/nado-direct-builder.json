@@ -1,0 +1,62 @@
+{
+  "venue": "nado_direct",
+  "env_files": [
+    ".env.nado-direct.local"
+  ],
+  "benchmark": {
+    "scenario": "single",
+    "iterations": 10,
+    "warmups": 2,
+    "batch_size": 1,
+    "rate_per_second": 0,
+    "max_in_flight": 1,
+    "latency_mode": "total",
+    "measurement_mode": "ws_confirmation",
+    "confirmation_timeout_ms": 10000
+  },
+  "http": {
+    "timeout_ms": 10000,
+    "max_idle_conns": 16,
+    "max_idle_conns_per_host": 8,
+    "disable_compression": false
+  },
+  "risk": {
+    "require_post_only": true
+  },
+  "cleanup": {
+    "enabled": true,
+    "mode": "best_effort",
+    "scope": "after_sample",
+    "timeout_ms": 15000
+  },
+  "request": {
+    "transport": "websocket",
+    "url": "https://prod-mm.nado-backend.xyz/execute",
+    "ws_url": "wss://prod-mm.nado-backend.xyz/ws/v2",
+    "builder": {
+      "type": "persistent_command",
+      "command": [
+        "uv",
+        "run",
+        "--python",
+        "3.13",
+        "--with",
+        "eth-account",
+        "python",
+        "internal/venues/nado/build_payload.py"
+      ],
+      "timeout_ms": 5000,
+      "params": {
+        "product_id": 2,
+        "symbol": "BTC-PERP",
+        "side": "buy",
+        "amount": "0.0014",
+        "price": "77000",
+        "order_type": "post_only",
+        "recv_window_ms": 5000,
+        "confirmation": true,
+        "cancel_confirmation": true
+      }
+    }
+  }
+}
